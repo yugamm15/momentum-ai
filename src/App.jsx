@@ -10,21 +10,28 @@ export default function App() {
   const [isInitializing, setIsInitializing] = useState(true);
 
   useEffect(() => {
-    // 1. First, check if we have a session in the URL Fragment (Google Auth)
-    // We wait a moment for the Supabase library to "swallow" the hash
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      console.log("INITIAL_AUTH_STABILIZED:", !!session);
-      setSession(session);
-      setIsInitializing(false);
+    // 1. Fragment Guard: If we see a Google Auth hash, we WAIT longer.
+    const hasHash = window.location.hash.includes('access_token=');
+    console.log("Auth System Status: " + (hasHash ? "Handshaking with Google..." : "Checking Local Session..."));
+
+    // 2. Load the session
+    const loadSession = async () => {
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      
+      // If no hash is present, we can settle on the session immediately.
+      // If a hash IS present, we wait for onAuthStateChange to fire instead.
+      if (!hasHash) {
+        setSession(currentSession);
+        setIsInitializing(false);
+      }
     };
 
-    checkSession();
+    loadSession();
 
-    // 2. Listen for any future changes
+    // 3. Listen for the SIGNED_IN event (This is what handles the Google redirect hash)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
-      console.log("AUTH_EVENT:", event);
-      if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'USER_UPDATED') {
+      console.log("AUTH_ENGINE_EVENT:", event);
+      if (newSession || event === 'SIGNED_OUT') {
         setSession(newSession);
         setIsInitializing(false);
       }
@@ -33,13 +40,12 @@ export default function App() {
     return () => { if (subscription) subscription.unsubscribe(); };
   }, []);
 
-  // While initializing or if session is unknown, show a solid loading state
-  // This prevents the "Flash" because it doesn't render the Router yet
+  // Show a solid, un-skippable Loading state
   if (isInitializing || session === undefined) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900">
-        <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-        <p className="mt-6 text-slate-400 font-bold tracking-widest text-[10px] uppercase">Stabilizing Momentum Session...</p>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950">
+        <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+        <p className="mt-8 text-blue-500 font-black tracking-widest text-[11px] uppercase">Finalizing Secure Session...</p>
       </div>
     );
   }
@@ -49,10 +55,10 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Landing />} />
         
-        {/* If session exists, stop them from seeing Login. If not, show Login. */}
+        {/* Strictly prevent seeing /login if logged in */}
         <Route path="/login" element={!session ? <Login /> : <Navigate to="/dashboard" replace />} />
         
-        {/* If session exists, show Dashboard. If not, force Login. */}
+        {/* Strictly prevent seeing Dashboard if logged out */}
         <Route 
           path="/dashboard/*" 
           element={session ? <Dashboard /> : <Navigate to="/login" replace />} 
