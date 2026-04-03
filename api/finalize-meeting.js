@@ -2,6 +2,7 @@
 import { createClient } from '@supabase/supabase-js';
 
 const STORAGE_BUCKET = process.env.STORAGE_BUCKET || 'meetings';
+const CHUNK_BUCKET = process.env.STORAGE_CHUNK_BUCKET || 'meeting-chunks';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -97,13 +98,14 @@ function getEnv() {
 }
 
 async function listChunkFiles(supabase, prefix) {
-  const { data, error } = await supabase.storage.from(STORAGE_BUCKET).list(prefix, {
+  const { data, error } = await supabase.storage.from(CHUNK_BUCKET).list(prefix, {
     limit: 1000,
     sortBy: { column: 'name', order: 'asc' },
   });
 
   if (error) {
-    throw new Error(error.message || 'Could not list uploaded meeting chunks.');
+    const message = error.message || 'Could not list uploaded meeting chunks.';
+    throw new Error(message.includes('Bucket not found') ? `Supabase bucket "${CHUNK_BUCKET}" was not found.` : message);
   }
 
   return (data || [])
@@ -112,10 +114,11 @@ async function listChunkFiles(supabase, prefix) {
 }
 
 async function downloadChunkBuffer(supabase, path) {
-  const { data, error } = await supabase.storage.from(STORAGE_BUCKET).download(path);
+  const { data, error } = await supabase.storage.from(CHUNK_BUCKET).download(path);
 
   if (error || !data) {
-    throw new Error(error?.message || `Could not download chunk ${path}.`);
+    const message = error?.message || `Could not download chunk ${path}.`;
+    throw new Error(message.includes('Bucket not found') ? `Supabase bucket "${CHUNK_BUCKET}" was not found.` : message);
   }
 
   return await data.arrayBuffer();
@@ -196,6 +199,32 @@ async function analyzeTranscript(transcript, geminiKey) {
 }
 
 async function saveMeetingRecord(supabase, meeting) {
+  const placeholder = await findPlaceholderMeeting(supabase);
+
+  if (placeholder?.id) {
+    const { data, error } = await supabase
+      .from('meetings')
+      .update({
+        title: meeting.title,
+        summary: meeting.summary,
+        transcript: meeting.transcript,
+        clarity: meeting.clarity,
+        actionability: meeting.actionability,
+        audio_url: meeting.audioUrl,
+        status: 'completed',
+      })
+      .eq('id', placeholder.id)
+      .select()
+      .single();
+
+    if (error || !data?.id) {
+      throw new Error(error?.message || 'Supabase could not update the processing meeting row.');
+    }
+
+    await cleanupBlankProcessingRows(supabase, data.id);
+    return data;
+  }
+
   const { data, error } = await supabase
     .from('meetings')
     .insert({
@@ -214,6 +243,7 @@ async function saveMeetingRecord(supabase, meeting) {
     throw new Error(error?.message || 'Supabase rejected the meeting record.');
   }
 
+  await cleanupBlankProcessingRows(supabase, data.id);
   return data;
 }
 
@@ -244,7 +274,52 @@ async function removeChunks(supabase, paths) {
     return;
   }
 
-  await supabase.storage.from(STORAGE_BUCKET).remove(paths);
+  await supabase.storage.from(CHUNK_BUCKET).remove(paths);
+}
+
+async function findPlaceholderMeeting(supabase) {
+  const threshold = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from('meetings')
+    .select('id, created_at')
+    .eq('status', 'processing')
+    .is('title', null)
+    .is('summary', null)
+    .is('transcript', null)
+    .is('audio_url', null)
+    .gte('created_at', threshold)
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (error) {
+    return null;
+  }
+
+  return data?.[0] || null;
+}
+
+async function cleanupBlankProcessingRows(supabase, keepId) {
+  const threshold = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from('meetings')
+    .select('id')
+    .eq('status', 'processing')
+    .is('title', null)
+    .is('summary', null)
+    .is('transcript', null)
+    .is('audio_url', null)
+    .gte('created_at', threshold);
+
+  if (error || !data?.length) {
+    return;
+  }
+
+  const idsToDelete = data.map((row) => row.id).filter((id) => id !== keepId);
+  if (!idsToDelete.length) {
+    return;
+  }
+
+  await supabase.from('meetings').delete().in('id', idsToDelete);
 }
 
 function normalizeAnalysis(analysis) {
