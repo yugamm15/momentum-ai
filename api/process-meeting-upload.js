@@ -33,8 +33,8 @@ export async function POST(request) {
 
     const supabase = createSupabaseClient(env);
     try {
-      if (!env.groqKey || !env.geminiKey) {
-        throw new Error('AI processing environment is incomplete.');
+      if (!env.groqKey) {
+        throw new Error('Transcription environment is incomplete.');
       }
 
       const result = await processMeetingAudio({

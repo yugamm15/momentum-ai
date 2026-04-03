@@ -22,7 +22,7 @@ export async function OPTIONS() {
 
 export async function POST(request) {
   try {
-    const env = getEnv();
+    const env = getEnv({ requireGemini: false });
     const body = await request.json();
     const meetingId = String(body?.meetingId || '').trim();
 

@@ -47,7 +47,7 @@ export async function processMeetingAudio({
 }) {
   const normalizedFile = await normalizeInputFile(file, contentType, meetingCode);
   const transcript = await transcribeRecording(normalizedFile, env.groqKey);
-  const analysis = await analyzeTranscript(transcript, env.geminiKey);
+  const analysis = await analyzeTranscriptWithFallback(transcript, env.geminiKey, meetingCode);
   const audioUrl = await tryUploadRecordingToStorage(
     supabase,
     normalizedFile,
@@ -166,6 +166,14 @@ async function transcribeRecording(file, groqKey) {
   return transcript;
 }
 
+async function analyzeTranscriptWithFallback(transcript, geminiKey, meetingCode) {
+  try {
+    return await analyzeTranscript(transcript, geminiKey);
+  } catch {
+    return buildFallbackAnalysis(transcript, meetingCode);
+  }
+}
+
 async function analyzeTranscript(transcript, geminiKey) {
   const prompt = [
     'You are an expert AI meeting assistant.',
@@ -210,6 +218,30 @@ async function analyzeTranscript(transcript, geminiKey) {
   const parsed = JSON.parse(extractJsonObject(rawText));
 
   return normalizeAnalysis(parsed);
+}
+
+export function buildFallbackAnalysis(transcript, meetingCode = '') {
+  const sentences = splitTranscriptIntoSentences(transcript);
+  const transcriptLooksLowSignal = isLowSignalTranscript(transcript, sentences);
+  const tasks = extractFallbackTasks(sentences);
+  const summarySentences = transcriptLooksLowSignal
+    ? []
+    : sentences.slice(0, Math.min(3, Math.max(2, sentences.length)));
+  const ambiguityCount = tasks.filter((task) => task.assignee === 'UNCLEAR' || task.deadline === 'Missing').length;
+
+  return normalizeAnalysis({
+    title: buildFallbackTitle(sentences, meetingCode),
+    summary: buildFallbackSummary(summarySentences, tasks.length, transcriptLooksLowSignal),
+    clarity_score: clampScore(transcriptLooksLowSignal ? 15 : 70 + Math.min(20, summarySentences.length * 5)),
+    actionability_score: clampScore(
+      transcriptLooksLowSignal
+        ? 5
+        : tasks.length === 0
+          ? 45
+          : 65 + Math.min(25, tasks.length * 7) - Math.min(20, ambiguityCount * 5)
+    ),
+    tasks,
+  });
 }
 
 async function saveMeetingRecord(supabase, meeting, options = {}) {
@@ -389,6 +421,103 @@ function normalizeAnalysis(analysis) {
       }))
       .filter((task) => task.title),
   };
+}
+
+function buildFallbackTitle(sentences, meetingCode) {
+  const sanitizedCode = sanitizeMeetingCode(meetingCode);
+  if (sanitizedCode) {
+    return `Meeting review for ${sanitizedCode}`;
+  }
+
+  const firstSentence = sentences[0] || 'Meeting Summary';
+  const title = firstSentence
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .slice(0, 6)
+    .join(' ');
+
+  return title || 'Meeting Summary';
+}
+
+function buildFallbackSummary(summarySentences, taskCount, transcriptLooksLowSignal) {
+  if (transcriptLooksLowSignal) {
+    return 'Momentum captured the audio file, but the transcript contained too little clear speech for a reliable summary.';
+  }
+
+  const summary = summarySentences.join(' ').trim();
+  if (summary) {
+    return taskCount > 0
+      ? `${summary} Momentum also identified ${taskCount} follow-up item${taskCount === 1 ? '' : 's'}.`
+      : summary;
+  }
+
+  return 'Transcript processed successfully, but the AI fallback summary had limited detail to work with.';
+}
+
+function splitTranscriptIntoSentences(transcript) {
+  return String(transcript || '')
+    .replace(/\s+/g, ' ')
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+}
+
+function isLowSignalTranscript(transcript, sentences) {
+  const words = String(transcript || '')
+    .toLowerCase()
+    .match(/[a-z0-9]+/g) || [];
+  const uniqueWords = new Set(words);
+
+  return words.length < 6 || uniqueWords.size < 3 || sentences.length === 0;
+}
+
+function extractFallbackTasks(sentences) {
+  const taskKeywords = [
+    'will',
+    'should',
+    'need to',
+    'needs to',
+    'follow up',
+    'send',
+    'share',
+    'update',
+    'confirm',
+    'review',
+    'create',
+    'prepare',
+    'deploy',
+    'fix',
+    'finish',
+  ];
+
+  return sentences
+    .filter((sentence) =>
+      taskKeywords.some((keyword) => sentence.toLowerCase().includes(keyword))
+    )
+    .slice(0, 8)
+    .map((sentence) => ({
+      title: sentence.replace(/^[-*]\s*/, '').trim(),
+      assignee: inferFallbackAssignee(sentence),
+      deadline: inferFallbackDeadline(sentence),
+    }));
+}
+
+function inferFallbackAssignee(sentence) {
+  const explicitOwner = String(sentence || '').match(/\b([A-Z][a-z]+)\s+(?:will|should|needs?\s+to)\b/);
+  if (explicitOwner) {
+    return explicitOwner[1];
+  }
+
+  return 'UNCLEAR';
+}
+
+function inferFallbackDeadline(sentence) {
+  const match = String(sentence || '').match(
+    /\b(today|tomorrow|tonight|next week|next month|monday|tuesday|wednesday|thursday|friday|saturday|sunday|by [^.,;]+|\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)\b/i
+  );
+
+  return match ? match[0] : 'Missing';
 }
 
 function extractJsonObject(text) {

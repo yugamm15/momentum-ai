@@ -224,14 +224,23 @@ function inferContentTypeFromMeeting(meeting) {
 }
 
 function parseDataUrl(dataUrl) {
-  const match = String(dataUrl || '').match(/^data:([^;,]+)?(?:;charset=[^;,]+)?(;base64)?,(.*)$/s);
-  if (!match) {
+  const value = String(dataUrl || '').trim();
+  if (!value.startsWith('data:')) {
     throw new Error('Stored audio data is invalid.');
   }
 
-  const contentType = match[1] || 'audio/webm';
-  const isBase64 = Boolean(match[2]);
-  const payload = match[3] || '';
+  const commaIndex = value.indexOf(',');
+  if (commaIndex === -1) {
+    throw new Error('Stored audio data is invalid.');
+  }
+
+  const metadata = value.slice(5, commaIndex);
+  const payload = value.slice(commaIndex + 1);
+  const metadataParts = metadata.split(';').filter(Boolean);
+  const isBase64 = metadataParts.some((part) => part.toLowerCase() === 'base64');
+  const contentType = metadataParts
+    .filter((part) => part.toLowerCase() !== 'base64')
+    .join(';') || 'audio/webm';
   const buffer = isBase64
     ? Buffer.from(payload, 'base64')
     : Buffer.from(decodeURIComponent(payload), 'utf8');

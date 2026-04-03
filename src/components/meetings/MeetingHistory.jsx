@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Calendar,
   MessageSquare,
@@ -8,6 +8,7 @@ import {
   Sparkles,
   Filter,
   Wand2,
+  RefreshCw,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { apiUrl } from '../../lib/api';
@@ -23,38 +24,78 @@ export default function MeetingHistory() {
   const [loading, setLoading] = useState(true);
   const [processingMeetingId, setProcessingMeetingId] = useState('');
   const [processingAllPending, setProcessingAllPending] = useState(false);
+  const [fetchError, setFetchError] = useState('');
+  const [isOffline, setIsOffline] = useState(typeof navigator !== 'undefined' ? !navigator.onLine : false);
+  const [filterMode, setFilterMode] = useState('all');
 
   const [activeChatMeeting, setActiveChatMeeting] = useState(null);
   const [chatQuestion, setChatQuestion] = useState('');
   const [chatHistory, setChatHistory] = useState([]);
   const [isAnswering, setIsAnswering] = useState(false);
+  const lastAutoProcessKeyRef = useRef('');
 
-  useEffect(() => {
-    let alive = true;
+  async function loadMeetings({ quiet = false } = {}) {
+    if (!quiet) {
+      setLoading(true);
+    }
 
-    async function fetchMeetings() {
-      const { data } = await supabase
+    try {
+      const { data, error } = await supabase
         .from('meetings')
         .select('id, title, summary, transcript, actionability, created_at, status, tasks(id)')
         .order('created_at', { ascending: false });
 
+      if (error) {
+        throw error;
+      }
+
+      setMeetings(data || []);
+      setFetchError('');
+    } catch (error) {
+      setFetchError(error.message || 'Momentum could not load your meetings right now.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    let alive = true;
+
+    function handleOnline() {
       if (!alive) {
         return;
       }
 
-      if (data) {
-        setMeetings(data);
-      }
-
-      setLoading(false);
+      setIsOffline(false);
+      loadMeetings({ quiet: true }).catch(() => {});
     }
 
-    fetchMeetings();
-    const interval = setInterval(fetchMeetings, 10000);
+    function handleOffline() {
+      if (!alive) {
+        return;
+      }
+
+      setIsOffline(true);
+      setFetchError('Internet connection lost. Momentum will retry when you are back online.');
+    }
+
+    loadMeetings().catch(() => {});
+    const interval = setInterval(() => {
+      if (!alive || !navigator.onLine) {
+        return;
+      }
+
+      loadMeetings({ quiet: true }).catch(() => {});
+    }, 10000);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
 
     return () => {
       alive = false;
       clearInterval(interval);
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
     };
   }, []);
 
@@ -99,19 +140,8 @@ export default function MeetingHistory() {
     setProcessingMeetingId(meetingId);
 
     try {
-      const payload = await requestStoredMeetingProcessing(meetingId);
-
-      setMeetings((previous) =>
-        previous.map((meeting) =>
-          meeting.id === meetingId
-            ? {
-                ...meeting,
-                status: 'processing',
-                summary: payload?.detail || meeting.summary,
-              }
-            : meeting
-        )
-      );
+      await requestStoredMeetingProcessing(meetingId);
+      await loadMeetings({ quiet: true });
     } catch (error) {
       setMeetings((previous) =>
         previous.map((meeting) =>
@@ -144,18 +174,8 @@ export default function MeetingHistory() {
         setProcessingMeetingId(meetingId);
 
         try {
-          const payload = await requestStoredMeetingProcessing(meetingId);
-          setMeetings((previous) =>
-            previous.map((meeting) =>
-              meeting.id === meetingId
-                ? {
-                    ...meeting,
-                    status: 'processing',
-                    summary: payload?.detail || meeting.summary,
-                  }
-                : meeting
-            )
-          );
+          await requestStoredMeetingProcessing(meetingId);
+          await loadMeetings({ quiet: true });
         } catch (error) {
           setMeetings((previous) =>
             previous.map((meeting) =>
@@ -176,6 +196,58 @@ export default function MeetingHistory() {
   };
 
   const pendingAnalysisCount = meetings.filter((meeting) => getMeetingState(meeting) === 'pending-analysis').length;
+  const filteredMeetings = meetings.filter((meeting) => {
+    if (filterMode === 'all') {
+      return true;
+    }
+
+    return getMeetingState(meeting) === filterMode;
+  });
+
+  useEffect(() => {
+    if (loading || processingAllPending || isOffline) {
+      return;
+    }
+
+    const pendingIds = meetings
+      .filter((meeting) => getMeetingState(meeting) === 'pending-analysis')
+      .map((meeting) => meeting.id);
+    const pendingKey = pendingIds.join(',');
+
+    if (!pendingKey || lastAutoProcessKeyRef.current === pendingKey) {
+      return;
+    }
+
+    lastAutoProcessKeyRef.current = pendingKey;
+    (async () => {
+      setProcessingAllPending(true);
+
+      try {
+        for (const meetingId of pendingIds) {
+          setProcessingMeetingId(meetingId);
+
+          try {
+            await requestStoredMeetingProcessing(meetingId);
+            await loadMeetings({ quiet: true });
+          } catch (error) {
+            setMeetings((previous) =>
+              previous.map((meeting) =>
+                meeting.id === meetingId
+                  ? {
+                      ...meeting,
+                      summary: error.message || meeting.summary,
+                    }
+                  : meeting
+              )
+            );
+          }
+        }
+      } finally {
+        setProcessingMeetingId('');
+        setProcessingAllPending(false);
+      }
+    })().catch(() => {});
+  }, [isOffline, loading, meetings, processingAllPending]);
 
   if (loading) {
     return (
@@ -207,14 +279,37 @@ export default function MeetingHistory() {
           <div className="bg-emerald-50 text-emerald-700 px-6 py-3 rounded-2xl flex items-center gap-2 font-black text-xs uppercase tracking-widest border border-emerald-100 shadow-sm shadow-emerald-50">
             <TrendingUp className="w-4 h-4" /> Live Sync Active
           </div>
-          <button className="bg-white border-2 border-slate-100 px-6 py-3 rounded-2xl flex items-center gap-2 font-black text-xs uppercase tracking-widest hover:bg-slate-50 transition-all text-slate-600 active:scale-95">
-            <Filter className="w-4 h-4" /> Filter Records
+          <button
+            onClick={() => setFilterMode(getNextMeetingFilterMode(filterMode))}
+            className="bg-white border-2 border-slate-100 px-6 py-3 rounded-2xl flex items-center gap-2 font-black text-xs uppercase tracking-widest hover:bg-slate-50 transition-all text-slate-600 active:scale-95"
+          >
+            <Filter className="w-4 h-4" /> {getMeetingFilterLabel(filterMode)}
+          </button>
+          <button
+            onClick={() => loadMeetings().catch(() => {})}
+            className="bg-white border-2 border-slate-100 px-6 py-3 rounded-2xl flex items-center gap-2 font-black text-xs uppercase tracking-widest hover:bg-slate-50 transition-all text-slate-600 active:scale-95"
+          >
+            <RefreshCw className="w-4 h-4" /> Refresh
           </button>
         </div>
       </div>
 
+      {(fetchError || isOffline) && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl px-6 py-4 flex items-center justify-between gap-4">
+          <div className="text-sm font-semibold">
+            {fetchError || 'Internet connection lost. Momentum will retry when you are back online.'}
+          </div>
+          <button
+            onClick={() => loadMeetings().catch(() => {})}
+            className="px-4 py-2 rounded-xl bg-white border border-amber-200 text-xs font-black uppercase tracking-widest"
+          >
+            Retry Now
+          </button>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pb-20">
-        {meetings.map((meeting) => {
+        {filteredMeetings.map((meeting) => {
           const badge = getMeetingBadge(meeting);
           const meetingState = getMeetingState(meeting);
           const isPendingAnalysis = meetingState === 'pending-analysis';
@@ -294,13 +389,19 @@ export default function MeetingHistory() {
             </div>
           );
         })}
-        {meetings.length === 0 && (
+        {filteredMeetings.length === 0 && (
           <div className="col-span-2 p-24 text-center border-4 border-dashed border-slate-100 rounded-[48px] bg-white shadow-inner">
             <div className="w-20 h-20 bg-slate-50 rounded-3xl flex items-center justify-center mx-auto mb-6">
               <Calendar className="w-10 h-10 text-slate-300" />
             </div>
-            <h3 className="text-xl font-black text-slate-400 uppercase tracking-widest">Vault Empty</h3>
-            <p className="text-slate-300 mt-2 font-medium">Record a meeting to see momentum in action.</p>
+            <h3 className="text-xl font-black text-slate-400 uppercase tracking-widest">
+              {meetings.length === 0 ? 'Vault Empty' : 'No Matching Records'}
+            </h3>
+            <p className="text-slate-300 mt-2 font-medium">
+              {meetings.length === 0
+                ? 'Record a meeting to see momentum in action.'
+                : 'Change the active filter to see more meetings.'}
+            </p>
           </div>
         )}
       </div>
@@ -389,4 +490,26 @@ async function requestStoredMeetingProcessing(meetingId) {
   }
 
   return payload;
+}
+
+function getNextMeetingFilterMode(currentFilter) {
+  const filterModes = ['all', 'completed', 'pending-analysis', 'processing'];
+  const currentIndex = filterModes.indexOf(currentFilter);
+  return filterModes[(currentIndex + 1) % filterModes.length];
+}
+
+function getMeetingFilterLabel(filterMode) {
+  if (filterMode === 'completed') {
+    return 'Filter: Ready';
+  }
+
+  if (filterMode === 'pending-analysis') {
+    return 'Filter: Pending';
+  }
+
+  if (filterMode === 'processing') {
+    return 'Filter: Processing';
+  }
+
+  return 'Filter: All';
 }
