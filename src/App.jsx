@@ -6,31 +6,40 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 
 export default function App() {
-  const [session, setSession] = useState(undefined); // undefined means "Still Checking"
+  const [session, setSession] = useState(undefined);
+  const [isInitializing, setIsInitializing] = useState(true);
 
   useEffect(() => {
-    // 1. Initial lookup
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      console.log("INITIAL_FETCH:", session ? "Session Active" : "No Session");
+    // 1. First, check if we have a session in the URL Fragment (Google Auth)
+    // We wait a moment for the Supabase library to "swallow" the hash
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      console.log("INITIAL_AUTH_STABILIZED:", !!session);
       setSession(session);
-    });
+      setIsInitializing(false);
+    };
 
-    // 2. Continuous listener
+    checkSession();
+
+    // 2. Listen for any future changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
-      console.log("AUTH_EVENT:", event, !!newSession);
-      // We use a small timeout to let the URL fragment be processed before updating UI
-      setTimeout(() => setSession(newSession), 0);
+      console.log("AUTH_EVENT:", event);
+      if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'USER_UPDATED') {
+        setSession(newSession);
+        setIsInitializing(false);
+      }
     });
 
     return () => { if (subscription) subscription.unsubscribe(); };
   }, []);
 
-  // Show nothing or a spinner while WE DON'T KNOW if you're logged in yet
-  if (session === undefined) {
+  // While initializing or if session is unknown, show a solid loading state
+  // This prevents the "Flash" because it doesn't render the Router yet
+  if (isInitializing || session === undefined) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900">
-        <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-        <p className="mt-6 text-blue-400 font-bold tracking-widest text-xs uppercase animate-pulse">Initializing Momentum Session...</p>
+        <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+        <p className="mt-6 text-slate-400 font-bold tracking-widest text-[10px] uppercase">Stabilizing Momentum Session...</p>
       </div>
     );
   }
@@ -40,10 +49,10 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Landing />} />
         
-        {/* If logged in, go to dashboard. If not, show login. */}
+        {/* If session exists, stop them from seeing Login. If not, show Login. */}
         <Route path="/login" element={!session ? <Login /> : <Navigate to="/dashboard" replace />} />
         
-        {/* Protect the dashboard route */}
+        {/* If session exists, show Dashboard. If not, force Login. */}
         <Route 
           path="/dashboard/*" 
           element={session ? <Dashboard /> : <Navigate to="/login" replace />} 
