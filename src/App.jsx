@@ -10,28 +10,28 @@ export default function App() {
   const [isInitializing, setIsInitializing] = useState(true);
 
   useEffect(() => {
-    // 1. Fragment Guard: If we see a Google Auth hash, we WAIT longer.
+    // Check if we have a hash in the URL (Google callback)
     const hasHash = window.location.hash.includes('access_token=');
-    console.log("Auth System Status: " + (hasHash ? "Handshaking with Google..." : "Checking Local Session..."));
-
-    // 2. Load the session
-    const loadSession = async () => {
-      const { data: { session: currentSession } } = await supabase.auth.getSession();
+    
+    const initAuth = async () => {
+      // 1. Fetch initial session
+      const { data: { session: initialSession } } = await supabase.auth.getSession();
       
-      // If no hash is present, we can settle on the session immediately.
-      // If a hash IS present, we wait for onAuthStateChange to fire instead.
+      // 2. If NO hash from google, we finalize the initial session immediately
       if (!hasHash) {
-        setSession(currentSession);
+        setSession(initialSession);
         setIsInitializing(false);
       }
     };
 
-    loadSession();
+    initAuth();
 
-    // 3. Listen for the SIGNED_IN event (This is what handles the Google redirect hash)
+    // 3. LISTEN for the SIGNED_IN event (Google redirect success)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
-      console.log("AUTH_ENGINE_EVENT:", event);
-      if (newSession || event === 'SIGNED_OUT') {
+      console.log("🔒 MOMENTUM_AUTH_ENGINE:", event, !!newSession);
+      
+      // Once we have a session OR we definitively don't, we stop the loader
+      if (newSession !== undefined) {
         setSession(newSession);
         setIsInitializing(false);
       }
@@ -40,12 +40,12 @@ export default function App() {
     return () => { if (subscription) subscription.unsubscribe(); };
   }, []);
 
-  // Show a solid, un-skippable Loading state
+  // Show a SOLID, heavy-duty loading screen that handles the redirect handshake
   if (isInitializing || session === undefined) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950">
-        <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-        <p className="mt-8 text-blue-500 font-black tracking-widest text-[11px] uppercase">Finalizing Secure Session...</p>
+        <div className="w-16 h-16 border-t-4 border-blue-600 rounded-full animate-spin"></div>
+        <p className="mt-8 text-blue-500 font-bold tracking-widest text-[10px] uppercase animate-pulse">Establishing Secure Connection...</p>
       </div>
     );
   }
@@ -53,18 +53,22 @@ export default function App() {
   return (
     <Router>
       <Routes>
+        {/* Landing Page */}
         <Route path="/" element={<Landing />} />
         
-        {/* Strictly prevent seeing /login if logged in */}
-        <Route path="/login" element={!session ? <Login /> : <Navigate to="/dashboard" replace />} />
+        {/* Login: Only show if NO session. If YES session, go to Dashboard. */}
+        <Route 
+          path="/login" 
+          element={session ? <Navigate to="/dashboard" replace /> : <Login />} 
+        />
         
-        {/* Strictly prevent seeing Dashboard if logged out */}
+        {/* Dashboard: Only show IF session. If NO session, go to Login. */}
         <Route 
           path="/dashboard/*" 
           element={session ? <Dashboard /> : <Navigate to="/login" replace />} 
         />
         
-        {/* Fallback */}
+        {/* Catch-all */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>
