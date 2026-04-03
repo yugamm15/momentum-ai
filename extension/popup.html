@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&display=swap');
+    
+    body {
+      width: 380px;
+      padding: 20px;
+      font-family: 'Outfit', sans-serif;
+      background: #0B1021;
+      color: #ffffff;
+      margin: 0;
+    }
+    
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 24px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      padding-bottom: 16px;
+    }
+
+    .brand-title {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      margin: 0;
+    }
+    
+    .status-card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 16px;
+      border-radius: 12px;
+      margin-bottom: 16px;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .recording-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #10B981;
+      font-weight: 600;
+      font-size: 14px;
+      margin-bottom: 12px;
+    }
+
+    .pulse {
+      width: 10px;
+      height: 10px;
+      background-color: #10B981;
+      border-radius: 50%;
+      box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+      animation: pulse-animation 1.5s infinite;
+    }
+
+    @keyframes pulse-animation {
+      0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+      70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+    }
+    
+    .transcript-box {
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 13px;
+      line-height: 1.5;
+      color: #9ca3af;
+      height: 60px;
+      overflow-y: auto;
+      font-family: monospace;
+    }
+    
+    .participants-section {
+      margin-top: 16px;
+    }
+    
+    .section-title {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #6b7280;
+      margin-bottom: 12px;
+      font-weight: 600;
+    }
+
+    .participant-list {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    
+    .participant-pill {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .dashboard-btn {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      margin-top: 24px;
+      font-size: 14px;
+      font-weight: 600;
+      font-family: 'Outfit', sans-serif;
+      transition: opacity 0.2s, transform 0.2s;
+    }
+
+    .dashboard-btn:hover {
+      opacity: 0.9;
+      transform: translateY(-1px);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <img src="logo.png" alt="Logo" style="width: 28px; height: 28px; border-radius: 6px;" onerror="this.style.display='none'">
+    <h1 class="brand-title">Moméntum - AI</h1>
+  </div>
+  
+  <div class="status-card">
+    <div class="recording-indicator">
+      <div class="pulse"></div> Recording Live
+    </div>
+    <div class="transcript-box" id="transcript-preview">
+      [04:22 PM] Great, let's start the meeting and review the designs...
+    </div>
+  </div>
+  
+  <div class="participants-section">
+    <div class="section-title">In This Meeting</div>
+    <div id="participant-list" class="participant-list">
+      <div style="color:#6b7280; font-size:13px; grid-column: span 2;">Scanning participants...</div>
+    </div>
+  </div>
+
+  <button class="dashboard-btn" onclick="openDashboard()">
+    Open Command Center →
+  </button>
+
+  <script src="popup.js"></script>
+</body>
+</html>
