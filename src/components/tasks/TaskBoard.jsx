@@ -1,13 +1,24 @@
 import { Plus, Filter, AlertCircle, Clock, ArrowRight } from 'lucide-react';
-
-const MOCK_TASKS = [
-  { id: 1, title: 'Finalize Q3 Budget', assignee: 'Alice', status: 'todo', source: 'Q3 Marketing Strategy', date: 'Apr 25' },
-  { id: 2, title: 'Update Dashboard UI', assignee: 'Bob', status: 'in-progress', source: 'Product Sync & Design', date: 'Apr 10' },
-  { id: 3, title: 'Prepare presentation', assignee: 'Yugam', status: 'done', source: 'Q3 Marketing Strategy', date: 'Apr 2' },
-  { id: 4, title: 'Check server logs for memory leak', assignee: 'UNCLEAR', status: 'todo', source: 'Product Sync & Design', date: 'Missing', flag: true },
-];
+import { supabase } from '../../lib/supabase';
+import { useEffect, useState } from 'react';
 
 export default function TaskBoard() {
+  const [tasks, setTasks] = useState([]);
+
+  useEffect(() => {
+    async function fetchTasks() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data, error } = await supabase
+        .from('tasks')
+        .select(`*, meetings(title)`)
+        .eq('user_id', user.id);
+      
+      if (!error && data) setTasks(data);
+    }
+    fetchTasks();
+  }, []);
+
   const columns = [
     { id: 'todo', label: 'To Do', color: 'bg-slate-200' },
     { id: 'in-progress', label: 'In Progress', color: 'bg-blue-200' },
@@ -34,9 +45,9 @@ export default function TaskBoard() {
 
       <div className="flex gap-6 overflow-x-auto pb-6">
         {columns.map(col => {
-          let tasks = MOCK_TASKS.filter(t => t.status === col.id && !t.flag);
+          let colTasks = tasks.filter(t => t.status === col.id);
           if (col.isFlag) {
-            tasks = MOCK_TASKS.filter(t => t.flag);
+            colTasks = tasks.filter(t => t.assignee === 'UNCLEAR' || t.deadline === 'Missing');
           }
 
           return (
@@ -49,19 +60,19 @@ export default function TaskBoard() {
                   </h3>
                 </div>
                 <span className="w-6 h-6 flex items-center justify-center bg-slate-200 text-slate-600 text-xs font-bold rounded-full">
-                  {tasks.length}
+                  {colTasks.length}
                 </span>
               </div>
               
               <div className="flex flex-col gap-3">
-                {tasks.map(t => (
+                {colTasks.map(t => (
                   <div 
                     key={t.id} 
                     className={`bg-white p-4 rounded-lg border shadow-sm cursor-grab hover:border-slate-300 transition-colors ${
-                      t.flag ? 'border-rose-300 shadow-rose-100' : ''
+                      col.isFlag ? 'border-rose-300 shadow-rose-100' : ''
                     }`}
                   >
-                    {t.flag && (
+                    {col.isFlag && (
                       <div className="flex items-center gap-1.5 text-[11px] font-bold text-rose-600 uppercase tracking-widest mb-2">
                         <AlertCircle className="w-3.5 h-3.5" /> Action Required
                       </div>
@@ -73,7 +84,7 @@ export default function TaskBoard() {
 
                     <div className="px-2.5 py-1.5 bg-slate-50 border rounded text-[11px] font-medium text-slate-500 mb-4 inline-flex items-center gap-1.5 w-full truncate">
                       <ArrowRight className="w-3 h-3 flex-shrink-0" />
-                      <span className="truncate">{t.source}</span>
+                      <span className="truncate">{t.meetings?.title || 'Unknown Meeting'}</span>
                     </div>
 
                     <div className="flex justify-between items-center border-t pt-3 mt-1">
@@ -91,16 +102,16 @@ export default function TaskBoard() {
                       </div>
                       
                       <div className={`flex items-center gap-1 text-[11px] font-semibold ${
-                        t.date === 'Missing' ? 'text-rose-500' : 'text-slate-500'
+                        t.deadline === 'Missing' ? 'text-rose-500' : 'text-slate-500'
                       }`}>
                         <Clock className="w-3 h-3" />
-                        {t.date}
+                        {t.deadline}
                       </div>
                     </div>
                   </div>
                 ))}
                 
-                {tasks.length === 0 && (
+                {colTasks.length === 0 && (
                   <div className="flex items-center justify-center h-24 border-2 border-dashed border-slate-200 rounded-lg text-sm text-slate-400 font-medium my-1">
                     No tasks
                   </div>

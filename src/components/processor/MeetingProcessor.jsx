@@ -75,13 +75,16 @@ export default function MeetingProcessor({ onComplete }) {
       analysisText = analysisText.replace(/```json/g, '').replace(/```/g, '').trim();
       const analysis = JSON.parse(analysisText);
 
-      // 3. Save to Supabase
+      // Save to Supabase
       setStatus('saving');
       
+      const { data: { user } } = await supabase.auth.getUser();
+
       // Save meeting
       const { data: meetingData, error: meetingError } = await supabase
         .from('meetings')
         .insert({
+          user_id: user?.id,
           title: analysis.title,
           summary: analysis.summary,
           transcript: transcript,
@@ -92,11 +95,11 @@ export default function MeetingProcessor({ onComplete }) {
         .single();
 
       if (meetingError) {
-        console.error("Supabase error (needs tables created!):", meetingError);
-        // We will just proceed to visual completion even if DB fails during hackathon
+        console.error("Supabase error:", meetingError);
       } else if (analysis.tasks && meetingData) {
         // Save tasks
         const tasksToInsert = analysis.tasks.map(t => ({
+          user_id: user?.id,
           meeting_id: meetingData.id,
           title: t.title,
           assignee: t.assignee,
