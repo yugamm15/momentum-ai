@@ -10,33 +10,45 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // 1. Initial lookup
     supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log("Supabase initial session check:", session ? "Session Active" : "No Session");
       setSession(session);
       setLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
+    // 2. Continuous listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
+      console.log("Auth State Changed Event:", event, "New Session:", newSession ? "Active" : "None");
+      setSession(newSession);
+      setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      if (subscription) subscription.unsubscribe();
+    };
   }, []);
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center bg-slate-50">Loading...</div>;
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
+        <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+        <p className="mt-4 text-slate-500 font-bold tracking-widest uppercase text-xs">Authenticating...</p>
+      </div>
+    );
   }
 
   return (
     <Router>
       <Routes>
         {/* Public Routes */}
-        <Route path="/" element={!session ? <Landing /> : <Navigate to="/dashboard" replace />} />
+        <Route path="/" element={<Landing />} />
         <Route path="/login" element={!session ? <Login /> : <Navigate to="/dashboard" replace />} />
         
-        {/* Private Routes */}
+        {/* Private Routes (Protected) */}
         <Route 
-          path="/dashboard" 
-          element={session ? <Dashboard /> : <Navigate to="/login" replace />} 
+          path="/dashboard/*" 
+          element={session ? <Dashboard /> : <Navigate to="/login" state={{ error: "Session Expired" }} replace />} 
         />
         
         {/* Fallback */}
