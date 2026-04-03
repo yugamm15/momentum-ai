@@ -122,8 +122,8 @@ export default function MeetingProcessor({ onComplete }) {
   return (
     <div className="bg-white p-8 rounded-xl border shadow-sm max-w-xl mx-auto my-8">
       <div className="text-center mb-6">
-        <h2 className="text-2xl font-bold text-slate-900">Upload Meeting Audio</h2>
-        <p className="text-slate-500 mt-2">Drop the .webm file recorded by the Momentum Chrome Extension.</p>
+        <h2 className="text-2xl font-bold text-slate-900">Manual Meeting Upload</h2>
+        <p className="text-slate-500 mt-2">Upload a .webm manually, or use the Google Meet extension for automatic live sync.</p>
       </div>
 
       <div 
@@ -160,7 +160,7 @@ export default function MeetingProcessor({ onComplete }) {
         disabled={!file || status !== 'idle'}
         className="w-full py-3 bg-slate-900 text-white rounded-lg font-medium hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
       >
-        {status === 'idle' && 'Process Meeting AI 🚀'}
+        {status === 'idle' && 'Process Meeting AI'}
         {status === 'transcribing' && <><Loader2 className="w-5 h-5 animate-spin" /> Transcribing with Groq Whisper...</>}
         {status === 'analyzing' && <><Loader2 className="w-5 h-5 animate-spin" /> Analyzing with Gemini Flash...</>}
         {status === 'saving' && <><Loader2 className="w-5 h-5 animate-spin" /> Saving to Supabase...</>}

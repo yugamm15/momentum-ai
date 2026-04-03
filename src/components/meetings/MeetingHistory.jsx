@@ -53,7 +53,7 @@ export default function MeetingHistory() {
       const data = await res.json();
       const answer = data.candidates[0].content.parts[0].text;
       setChatHistory(prev => [...prev, { role: 'ai', text: answer }]);
-    } catch (err) {
+    } catch {
       setChatHistory(prev => [...prev, { role: 'ai', text: "Sorry, I couldn't process that question right now." }]);
     } finally {
       setIsAnswering(false);
@@ -85,7 +85,7 @@ export default function MeetingHistory() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pb-20">
-        {meetings.map((m, i) => {
+        {meetings.map((m) => {
           let badgeClass = "bg-emerald-100 text-emerald-800 border-emerald-200";
           if (m.actionability < 80) badgeClass = "bg-amber-100 text-amber-800 border-amber-200";
           if (m.actionability < 60) badgeClass = "bg-rose-100 text-rose-800 border-rose-200";
@@ -154,7 +154,7 @@ export default function MeetingHistory() {
                 onClick={() => setActiveChatMeeting(null)}
                 className="w-12 h-12 flex items-center justify-center rounded-2xl bg-white border border-slate-200 text-slate-400 hover:text-slate-950 transition-all hover:rotate-90"
               >
-                ✕
+                X
               </button>
             </div>
             

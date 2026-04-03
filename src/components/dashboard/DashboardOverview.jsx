@@ -127,7 +127,7 @@ export default function DashboardOverview({ setTab }) {
               onClick={() => setTab('board')}
               className="text-xs font-black uppercase tracking-widest text-slate-400 hover:text-slate-900 transition-colors"
             >
-              Enter Task Board →
+              Enter Task Board {"->"}
             </button>
           </div>
         </div>

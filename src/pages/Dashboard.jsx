@@ -86,7 +86,7 @@ export default function Dashboard() {
           <div className="p-4 mb-4 rounded-xl border bg-slate-50 border-slate-200">
             <h4 className="text-sm font-semibold text-slate-900 mb-1">Google Meet Extension</h4>
             <p className="text-xs text-slate-500 leading-relaxed">
-              Record meetings securely and upload the file seamlessly.
+              Record in Google Meet and watch completed meetings sync here automatically.
             </p>
           </div>
           
