@@ -1,36 +1,47 @@
 import { Activity, CheckCircle2, AlertTriangle, Presentation } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useEffect, useState } from 'react';
+import { getMeetingBadge, getMeetingState, isMeetingAnalyzed } from '../../lib/meetingStatus';
 
 export default function DashboardOverview({ setTab }) {
-  const [stats, setStats] = useState({ meetings: 0, avgScore: 0, pendingTasks: 0, risks: 0 });
+  const [stats, setStats] = useState({ captures: 0, analyzed: 0, avgScore: 0, pendingTasks: 0, queue: 0 });
   const [recentMeetings, setRecentMeetings] = useState([]);
   const [activeTasks, setActiveTasks] = useState([]);
 
   useEffect(() => {
     async function fetchData() {
-      // MVP: Fetch ALL data without user_id filter for the demo
       const [meetingsRes, tasksRes] = await Promise.all([
-        supabase.from('meetings').select('*').order('created_at', { ascending: false }),
+        supabase
+          .from('meetings')
+          .select('id, title, created_at, actionability, summary, status, transcript')
+          .order('created_at', { ascending: false }),
         supabase.from('tasks').select('*, meetings(title)')
       ]);
 
       const meetings = meetingsRes.data || [];
       const tasks = tasksRes.data || [];
+      const analyzedMeetings = meetings.filter(isMeetingAnalyzed);
+      const queuedMeetings = meetings.filter((meeting) => getMeetingState(meeting) === 'pending-analysis');
 
-      // Calculate Stats
-      const score = meetings.length > 0 ? meetings.reduce((acc, m) => acc + (m.actionability || 0), 0) / meetings.length : 0;
+      const score =
+        analyzedMeetings.length > 0
+          ? analyzedMeetings.reduce((acc, meeting) => acc + (meeting.actionability || 0), 0) / analyzedMeetings.length
+          : 0;
       const pending = tasks.filter(t => t.status !== 'done').length;
-      const risks = tasks.filter(t => t.assignee === 'UNCLEAR' || t.deadline === 'Missing').length;
 
-      setStats({ meetings: meetings.length, avgScore: Math.round(score), pendingTasks: pending, risks });
-      setRecentMeetings(meetings.slice(0, 3));
+      setStats({
+        captures: meetings.length,
+        analyzed: analyzedMeetings.length,
+        avgScore: Math.round(score),
+        pendingTasks: pending,
+        queue: queuedMeetings.length,
+      });
+      setRecentMeetings(meetings.slice(0, 4));
       setActiveTasks(tasks.filter(t => t.status !== 'done').slice(0, 4));
     }
     fetchData();
     
-    // Auto-refresh every 5 seconds for the "WOW" effect
-    const interval = setInterval(fetchData, 5000);
+    const interval = setInterval(fetchData, 10000);
     return () => clearInterval(interval);
   }, []);
 
@@ -45,33 +56,33 @@ export default function DashboardOverview({ setTab }) {
         <div className="bg-white rounded-2xl border-2 border-slate-50 shadow-xl p-8 hover:scale-[1.02] transition-transform duration-300">
           <div className="flex items-center gap-3 text-slate-400 mb-3">
             <Presentation className="w-5 h-5" />
-            <span className="text-xs font-black uppercase tracking-widest">Total Meetings</span>
+            <span className="text-xs font-black uppercase tracking-widest">Total Captures</span>
           </div>
-          <div className="text-4xl font-black text-slate-900">{stats.meetings}</div>
+          <div className="text-4xl font-black text-slate-900">{stats.captures}</div>
         </div>
         
         <div className="bg-white rounded-2xl border-2 border-slate-50 shadow-xl p-8 hover:scale-[1.02] transition-transform duration-300">
           <div className="flex items-center gap-3 text-emerald-500 mb-3">
             <Activity className="w-5 h-5" />
-            <span className="text-xs font-black uppercase tracking-widest text-slate-400">Avg Focus Score</span>
+            <span className="text-xs font-black uppercase tracking-widest text-slate-400">AI Ready Meetings</span>
           </div>
-          <div className="text-4xl font-black text-emerald-600">{stats.avgScore}%</div>
+          <div className="text-4xl font-black text-emerald-600">{stats.analyzed}</div>
         </div>
         
         <div className="bg-white rounded-2xl border-2 border-slate-50 shadow-xl p-8 hover:scale-[1.02] transition-transform duration-300">
           <div className="flex items-center gap-3 text-blue-500 mb-3">
             <CheckCircle2 className="w-5 h-5" />
-            <span className="text-xs font-black uppercase tracking-widest text-slate-400">Pending Actions</span>
+            <span className="text-xs font-black uppercase tracking-widest text-slate-400">Avg Focus Score</span>
           </div>
-          <div className="text-4xl font-black text-slate-900">{stats.pendingTasks}</div>
+          <div className="text-4xl font-black text-slate-900">{stats.avgScore}%</div>
         </div>
         
-        <div className="bg-white rounded-2xl border-2 border-rose-100 shadow-xl p-8 hover:scale-[1.02] transition-transform duration-300">
-          <div className="flex items-center gap-3 text-rose-600 mb-3">
+        <div className="bg-white rounded-2xl border-2 border-amber-100 shadow-xl p-8 hover:scale-[1.02] transition-transform duration-300">
+          <div className="flex items-center gap-3 text-amber-600 mb-3">
             <AlertTriangle className="w-5 h-5" />
-            <span className="text-xs font-black uppercase tracking-widest text-rose-400 font-bold">Risk Flags</span>
+            <span className="text-xs font-black uppercase tracking-widest text-amber-500 font-bold">Analysis Queue</span>
           </div>
-          <div className="text-4xl font-black text-rose-600">{stats.risks}</div>
+          <div className="text-4xl font-black text-amber-600">{stats.queue}</div>
         </div>
       </div>
 
@@ -79,7 +90,7 @@ export default function DashboardOverview({ setTab }) {
         <div className="bg-white rounded-[32px] border-2 border-slate-50 shadow-2xl overflow-hidden">
           <div className="p-8 border-b border-slate-50 bg-slate-50/30">
             <h2 className="text-xl font-black text-slate-900">Recent Extracts</h2>
-            <p className="text-sm text-slate-500 font-medium">Automatic captures from your Google Meet calls.</p>
+            <p className="text-sm text-slate-500 font-medium">Completed analyses and pending recordings from Google Meet.</p>
           </div>
           <div className="divide-y divide-slate-50">
             {recentMeetings.map(m => (
@@ -92,8 +103,8 @@ export default function DashboardOverview({ setTab }) {
                   <h4 className="font-black text-slate-900 mb-1 group-hover:text-blue-600 transition-colors">{m.title}</h4>
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{new Date(m.created_at).toLocaleTimeString()}</p>
                 </div>
-                <div className={`px-4 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-lg ${m.actionability > 75 ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                  {m.actionability || 0}% Score
+                <div className={`px-4 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-lg border ${getMeetingBadge(m).className}`}>
+                  {getMeetingBadge(m).label}
                 </div>
               </div>
             ))}

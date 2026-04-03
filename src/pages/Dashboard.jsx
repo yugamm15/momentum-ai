@@ -1,8 +1,6 @@
 import { useState } from 'react';
 import '../index.css';
-import { LayoutDashboard, Video, Columns3, Upload, LogOut } from 'lucide-react';
-import { supabase } from '../lib/supabase';
-import { useNavigate } from 'react-router-dom';
+import { LayoutDashboard, Video, Columns3, Upload, RefreshCw } from 'lucide-react';
 
 import DashboardOverview from '../components/dashboard/DashboardOverview';
 import MeetingHistory from '../components/meetings/MeetingHistory';
@@ -11,12 +9,6 @@ import MeetingProcessor from '../components/processor/MeetingProcessor';
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('overview');
-  const navigate = useNavigate();
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    navigate('/');
-  };
 
   return (
     <div className="flex min-h-screen w-full bg-slate-50">
@@ -91,11 +83,11 @@ export default function Dashboard() {
           </div>
           
           <button 
-            onClick={handleLogout}
+            onClick={() => window.location.reload()}
             className="flex w-full items-center gap-3 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-rose-50 hover:text-rose-600 rounded-md transition-colors"
           >
-            <LogOut className="w-4 h-4" />
-            Sign Out
+            <RefreshCw className="w-4 h-4" />
+            Refresh Data
           </button>
         </div>
       </aside>

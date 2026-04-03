@@ -3,6 +3,7 @@ import {
   getEnv,
   processMeetingAudio,
 } from './_lib/meeting-processing.js';
+import { storeRawMeetingAudio } from './_lib/meeting-audio.js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -17,10 +18,12 @@ export async function OPTIONS() {
 
 export async function POST(request) {
   try {
-    const env = getEnv();
+    const env = getEnv({ requireGroq: false, requireGemini: false });
     const formData = await request.formData();
     const audioFile = formData.get('file');
     const meetingCode = String(formData.get('meetingCode') || '').trim();
+    const meetingUrl = String(formData.get('meetingUrl') || '').trim();
+    const sessionId = String(formData.get('sessionId') || '').trim();
     const contentType =
       String(formData.get('contentType') || audioFile?.type || 'audio/webm').trim() || 'audio/webm';
 
@@ -29,21 +32,51 @@ export async function POST(request) {
     }
 
     const supabase = createSupabaseClient(env);
-    const result = await processMeetingAudio({
-      file: audioFile,
-      meetingCode,
-      contentType,
-      supabase,
-      env,
-    });
+    try {
+      if (!env.groqKey || !env.geminiKey) {
+        throw new Error('AI processing environment is incomplete.');
+      }
 
-    return json({
-      ok: true,
-      meetingId: result.meeting.id,
-      meetingTitle: result.meeting.title,
-      taskCount: result.analysis.tasks.length,
-      audioStored: Boolean(result.audioUrl),
-    });
+      const result = await processMeetingAudio({
+        file: audioFile,
+        meetingCode,
+        contentType,
+        supabase,
+        env,
+      });
+
+      return json({
+        ok: true,
+        analysisComplete: true,
+        meetingId: result.meeting.id,
+        meetingTitle: result.meeting.title,
+        taskCount: result.analysis.tasks.length,
+        audioStored: Boolean(result.audioUrl),
+        detail: result.audioUrl
+          ? 'Transcript, summary, and extracted tasks are ready in Momentum.'
+          : 'Transcript, summary, and extracted tasks are ready. Raw audio storage is not available right now.',
+      });
+    } catch (processingError) {
+      const fallback = await storeRawMeetingAudio({
+        supabase,
+        file: audioFile,
+        contentType,
+        meetingCode,
+        meetingUrl,
+        sessionId,
+      });
+
+      return json({
+        ok: true,
+        analysisComplete: false,
+        meetingId: fallback.meeting.id,
+        meetingTitle: fallback.meeting.title,
+        taskCount: 0,
+        audioStored: true,
+        detail:
+          `${fallback.detail} AI processing fallback reason: ${processingError.message || 'unknown error'}`.slice(0, 500),
+      });
+    }
   } catch (error) {
     return json({ error: error.message || 'Direct meeting upload failed.' }, 500);
   }

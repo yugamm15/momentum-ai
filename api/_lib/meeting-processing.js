@@ -3,7 +3,9 @@ import { createClient } from '@supabase/supabase-js';
 
 const STORAGE_BUCKET = process.env.STORAGE_BUCKET || 'meetings';
 
-export function getEnv() {
+export function getEnv(options = {}) {
+  const requireGroq = options.requireGroq !== false;
+  const requireGemini = options.requireGemini !== false;
   const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
   const supabaseKey =
     process.env.SUPABASE_SERVICE_ROLE_KEY ||
@@ -12,7 +14,12 @@ export function getEnv() {
   const groqKey = process.env.GROQ_API_KEY || process.env.VITE_GROQ_API_KEY;
   const geminiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
 
-  if (!supabaseUrl || !supabaseKey || !groqKey || !geminiKey) {
+  if (
+    !supabaseUrl ||
+    !supabaseKey ||
+    (requireGroq && !groqKey) ||
+    (requireGemini && !geminiKey)
+  ) {
     throw new Error('Server environment variables are incomplete.');
   }
 
@@ -29,7 +36,15 @@ export function createSupabaseClient(env) {
   return createClient(env.supabaseUrl, env.supabaseKey);
 }
 
-export async function processMeetingAudio({ file, meetingCode, contentType, supabase, env }) {
+export async function processMeetingAudio({
+  file,
+  meetingCode,
+  contentType,
+  supabase,
+  env,
+  existingMeetingId = '',
+  existingAudioUrl = null,
+}) {
   const normalizedFile = await normalizeInputFile(file, contentType, meetingCode);
   const transcript = await transcribeRecording(normalizedFile, env.groqKey);
   const analysis = await analyzeTranscript(transcript, env.geminiKey);
@@ -48,11 +63,12 @@ export async function processMeetingAudio({ file, meetingCode, contentType, supa
     clarity: analysis.clarity_score,
     actionability: analysis.actionability_score,
     audioUrl,
+  }, {
+    existingMeetingId,
+    existingAudioUrl,
   });
 
-  if (analysis.tasks.length > 0) {
-    await saveTasks(supabase, meeting.id, analysis.tasks);
-  }
+  await replaceMeetingTasks(supabase, meeting.id, analysis.tasks);
 
   return {
     meeting,
@@ -196,7 +212,42 @@ async function analyzeTranscript(transcript, geminiKey) {
   return normalizeAnalysis(parsed);
 }
 
-async function saveMeetingRecord(supabase, meeting) {
+async function saveMeetingRecord(supabase, meeting, options = {}) {
+  const existingMeetingId = String(options?.existingMeetingId || '').trim();
+
+  if (existingMeetingId) {
+    const { data: existingMeeting, error: existingError } = await supabase
+      .from('meetings')
+      .select('id, audio_url')
+      .eq('id', existingMeetingId)
+      .single();
+
+    if (existingError || !existingMeeting?.id) {
+      throw new Error(existingError?.message || 'Momentum could not find the stored meeting row to update.');
+    }
+
+    const { data, error } = await supabase
+      .from('meetings')
+      .update({
+        title: meeting.title,
+        summary: meeting.summary,
+        transcript: meeting.transcript,
+        clarity: meeting.clarity,
+        actionability: meeting.actionability,
+        audio_url: meeting.audioUrl || existingMeeting.audio_url || options?.existingAudioUrl || null,
+        status: 'completed',
+      })
+      .eq('id', existingMeetingId)
+      .select()
+      .single();
+
+    if (error || !data?.id) {
+      throw new Error(error?.message || 'Supabase could not update the existing meeting record.');
+    }
+
+    return data;
+  }
+
   const placeholder = await findPlaceholderMeeting(supabase);
 
   if (placeholder?.id) {
@@ -245,7 +296,17 @@ async function saveMeetingRecord(supabase, meeting) {
   return data;
 }
 
-async function saveTasks(supabase, meetingId, tasks) {
+async function replaceMeetingTasks(supabase, meetingId, tasks) {
+  const { error: deleteError } = await supabase.from('tasks').delete().eq('meeting_id', meetingId);
+
+  if (deleteError) {
+    throw new Error(deleteError.message || 'Supabase could not replace the extracted tasks.');
+  }
+
+  if (!tasks.length) {
+    return;
+  }
+
   const rows = tasks.map((task) => {
     const assignee = sanitizeField(task.assignee, 'UNCLEAR');
     const deadline = sanitizeField(task.deadline, 'Missing');

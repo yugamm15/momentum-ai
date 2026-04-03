@@ -7,15 +7,14 @@ export default function TaskBoard() {
 
   useEffect(() => {
     async function fetchTasks() {
-      // MVP: Fetch ALL tasks for the demo
       const { data, error } = await supabase
         .from('tasks')
-        .select(`*, meetings(title)`);
+        .select('id, title, assignee, deadline, status, meetings(title)');
       
       if (!error && data) setTasks(data);
     }
     fetchTasks();
-    const interval = setInterval(fetchTasks, 5000);
+    const interval = setInterval(fetchTasks, 10000);
     return () => clearInterval(interval);
   }, []);
 
@@ -45,10 +44,7 @@ export default function TaskBoard() {
 
       <div className="flex gap-8 overflow-x-auto pb-12 snap-x px-4">
         {columns.map(col => {
-          let colTasks = tasks.filter(t => t.status === col.id);
-          if (col.isFlag) {
-            colTasks = tasks.filter(t => t.assignee === 'UNCLEAR' || t.deadline === 'Missing');
-          }
+          const colTasks = tasks.filter(t => t.status === col.id);
 
           const Icon = col.icon;
 

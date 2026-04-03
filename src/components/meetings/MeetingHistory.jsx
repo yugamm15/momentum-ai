@@ -1,130 +1,294 @@
-import { useState, useEffect } from 'react';
-import { Calendar, MessageSquare, Loader2, CheckCircle2, TrendingUp, Sparkles, Filter } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import {
+  Calendar,
+  MessageSquare,
+  Loader2,
+  CheckCircle2,
+  TrendingUp,
+  Sparkles,
+  Filter,
+  Wand2,
+} from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+import { apiUrl } from '../../lib/api';
+import {
+  canAskMeetingQuestion,
+  getMeetingBadge,
+  getMeetingState,
+  getMeetingSummaryText,
+} from '../../lib/meetingStatus';
 
 export default function MeetingHistory() {
   const [meetings, setMeetings] = useState([]);
   const [loading, setLoading] = useState(true);
-  
-  // Q&A State
+  const [processingMeetingId, setProcessingMeetingId] = useState('');
+  const [processingAllPending, setProcessingAllPending] = useState(false);
+
   const [activeChatMeeting, setActiveChatMeeting] = useState(null);
-  const [chatQuestion, setChatQuestion] = useState("");
+  const [chatQuestion, setChatQuestion] = useState('');
   const [chatHistory, setChatHistory] = useState([]);
   const [isAnswering, setIsAnswering] = useState(false);
 
   useEffect(() => {
+    let alive = true;
+
     async function fetchMeetings() {
-      // Fetch everything for the demo
       const { data } = await supabase
         .from('meetings')
-        .select('*, tasks(id)')
+        .select('id, title, summary, transcript, actionability, created_at, status, tasks(id)')
         .order('created_at', { ascending: false });
-        
-      if (data) setMeetings(data);
+
+      if (!alive) {
+        return;
+      }
+
+      if (data) {
+        setMeetings(data);
+      }
+
       setLoading(false);
     }
+
     fetchMeetings();
-    const interval = setInterval(fetchMeetings, 5000);
-    return () => clearInterval(interval);
+    const interval = setInterval(fetchMeetings, 10000);
+
+    return () => {
+      alive = false;
+      clearInterval(interval);
+    };
   }, []);
 
-  const handleAskQuestion = async (e) => {
-    e.preventDefault();
-    if (!chatQuestion.trim() || !activeChatMeeting) return;
-    
-    const userQ = chatQuestion;
-    setChatQuestion("");
-    setChatHistory(prev => [...prev, { role: 'user', text: userQ }]);
+  const handleAskQuestion = async (event) => {
+    event.preventDefault();
+    if (!chatQuestion.trim() || !activeChatMeeting?.id) {
+      return;
+    }
+
+    const userQuestion = chatQuestion.trim();
+    setChatQuestion('');
+    setChatHistory((previous) => [...previous, { role: 'user', text: userQuestion }]);
     setIsAnswering(true);
 
     try {
-      const prompt = `
-        You are a helpful AI assistant. Answer the user's question based strictly on this meeting transcript.
-        Transcript: ${activeChatMeeting.transcript}
-        Question: ${userQ}
-      `;
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+      const response = await fetch(apiUrl('/api/ask-meeting-question'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          meetingId: activeChatMeeting.id,
+          question: userQuestion,
+        }),
       });
-      const data = await res.json();
-      const answer = data.candidates[0].content.parts[0].text;
-      setChatHistory(prev => [...prev, { role: 'ai', text: answer }]);
-    } catch {
-      setChatHistory(prev => [...prev, { role: 'ai', text: "Sorry, I couldn't process that question right now." }]);
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.answer) {
+        throw new Error(payload?.error || 'Momentum could not answer that question right now.');
+      }
+
+      setChatHistory((previous) => [...previous, { role: 'ai', text: payload.answer }]);
+    } catch (error) {
+      setChatHistory((previous) => [
+        ...previous,
+        { role: 'ai', text: error.message || "Sorry, I couldn't process that question right now." },
+      ]);
     } finally {
       setIsAnswering(false);
     }
   };
 
-  if (loading) return (
-    <div className="flex flex-col items-center justify-center p-20 text-slate-400">
-      <Loader2 className="w-10 h-10 animate-spin mb-4" />
-      <span className="font-black uppercase tracking-widest text-xs">Syncing Archive...</span>
-    </div>
-  );
+  const handleProcessStoredMeeting = async (meetingId) => {
+    setProcessingMeetingId(meetingId);
+
+    try {
+      const payload = await requestStoredMeetingProcessing(meetingId);
+
+      setMeetings((previous) =>
+        previous.map((meeting) =>
+          meeting.id === meetingId
+            ? {
+                ...meeting,
+                status: 'processing',
+                summary: payload?.detail || meeting.summary,
+              }
+            : meeting
+        )
+      );
+    } catch (error) {
+      setMeetings((previous) =>
+        previous.map((meeting) =>
+          meeting.id === meetingId
+            ? {
+                ...meeting,
+                summary: error.message || meeting.summary,
+              }
+            : meeting
+        )
+      );
+    } finally {
+      setProcessingMeetingId('');
+    }
+  };
+
+  const handleProcessAllPending = async () => {
+    const pendingIds = meetings
+      .filter((meeting) => getMeetingState(meeting) === 'pending-analysis')
+      .map((meeting) => meeting.id);
+
+    if (!pendingIds.length) {
+      return;
+    }
+
+    setProcessingAllPending(true);
+
+    try {
+      for (const meetingId of pendingIds) {
+        setProcessingMeetingId(meetingId);
+
+        try {
+          const payload = await requestStoredMeetingProcessing(meetingId);
+          setMeetings((previous) =>
+            previous.map((meeting) =>
+              meeting.id === meetingId
+                ? {
+                    ...meeting,
+                    status: 'processing',
+                    summary: payload?.detail || meeting.summary,
+                  }
+                : meeting
+            )
+          );
+        } catch (error) {
+          setMeetings((previous) =>
+            previous.map((meeting) =>
+              meeting.id === meetingId
+                ? {
+                    ...meeting,
+                    summary: error.message || meeting.summary,
+                  }
+                : meeting
+            )
+          );
+        }
+      }
+    } finally {
+      setProcessingMeetingId('');
+      setProcessingAllPending(false);
+    }
+  };
+
+  const pendingAnalysisCount = meetings.filter((meeting) => getMeetingState(meeting) === 'pending-analysis').length;
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center p-20 text-slate-400">
+        <Loader2 className="w-10 h-10 animate-spin mb-4" />
+        <span className="font-black uppercase tracking-widest text-xs">Syncing Archive...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
       <div className="flex justify-between items-center bg-white p-8 rounded-[32px] border-2 border-slate-50 shadow-xl">
         <div>
           <h1 className="text-4xl font-black tracking-tight text-slate-900 mb-2">Meeting Vault</h1>
-          <p className="text-slate-500 font-medium capitalize">Intelligent records of every decision made.</p>
+          <p className="text-slate-500 font-medium capitalize">Completed analyses and pending synced recordings.</p>
         </div>
         <div className="flex gap-4">
-            <div className="bg-emerald-50 text-emerald-700 px-6 py-3 rounded-2xl flex items-center gap-2 font-black text-xs uppercase tracking-widest border border-emerald-100 shadow-sm shadow-emerald-50">
-                <TrendingUp className="w-4 h-4" /> Live Sync Active
-            </div>
-            <button className="bg-white border-2 border-slate-100 px-6 py-3 rounded-2xl flex items-center gap-2 font-black text-xs uppercase tracking-widest hover:bg-slate-50 transition-all text-slate-600 active:scale-95">
-                <Filter className="w-4 h-4" /> Filter Records
+          {pendingAnalysisCount > 0 && (
+            <button
+              onClick={handleProcessAllPending}
+              disabled={processingAllPending}
+              className="bg-amber-500 text-white px-6 py-3 rounded-2xl flex items-center gap-2 font-black text-xs uppercase tracking-widest hover:bg-amber-600 transition-all active:scale-95 disabled:opacity-50"
+            >
+              {processingAllPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
+              Resume {pendingAnalysisCount} Pending
             </button>
+          )}
+          <div className="bg-emerald-50 text-emerald-700 px-6 py-3 rounded-2xl flex items-center gap-2 font-black text-xs uppercase tracking-widest border border-emerald-100 shadow-sm shadow-emerald-50">
+            <TrendingUp className="w-4 h-4" /> Live Sync Active
+          </div>
+          <button className="bg-white border-2 border-slate-100 px-6 py-3 rounded-2xl flex items-center gap-2 font-black text-xs uppercase tracking-widest hover:bg-slate-50 transition-all text-slate-600 active:scale-95">
+            <Filter className="w-4 h-4" /> Filter Records
+          </button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pb-20">
-        {meetings.map((m) => {
-          let badgeClass = "bg-emerald-100 text-emerald-800 border-emerald-200";
-          if (m.actionability < 80) badgeClass = "bg-amber-100 text-amber-800 border-amber-200";
-          if (m.actionability < 60) badgeClass = "bg-rose-100 text-rose-800 border-rose-200";
+        {meetings.map((meeting) => {
+          const badge = getMeetingBadge(meeting);
+          const meetingState = getMeetingState(meeting);
+          const isPendingAnalysis = meetingState === 'pending-analysis';
+          const isProcessing = meetingState === 'processing';
+          const canChat = canAskMeetingQuestion(meeting);
 
           return (
-            <div key={m.id} className="bg-white rounded-[40px] border-2 border-slate-50 shadow-2xl flex flex-col hover:border-blue-200 transition-all group relative overflow-hidden">
-               <div className="absolute top-0 right-0 p-8 opacity-5">
-                  <Sparkles className="w-32 h-32 text-blue-600" />
-               </div>
+            <div key={meeting.id} className="bg-white rounded-[40px] border-2 border-slate-50 shadow-2xl flex flex-col hover:border-blue-200 transition-all group relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-8 opacity-5">
+                <Sparkles className="w-32 h-32 text-blue-600" />
+              </div>
 
               <div className="p-10 border-b border-dashed border-slate-100 flex justify-between items-start relative z-10">
                 <div className="max-w-[70%]">
                   <h3 className="text-2xl font-black text-slate-900 mb-3 group-hover:text-blue-600 transition-colors leading-tight">
-                    {m.title}
+                    {meeting.title}
                   </h3>
                   <div className="flex items-center gap-3 text-[10px] font-black uppercase tracking-[0.1em] text-slate-400 bg-slate-50 px-4 py-1.5 rounded-full w-fit">
-                    <Calendar className="w-3.5 h-3.5"/> {new Date(m.created_at).toLocaleDateString()}
+                    <Calendar className="w-3.5 h-3.5" /> {new Date(meeting.created_at).toLocaleDateString()}
                   </div>
                 </div>
-                <div className={`px-4 py-2 rounded-xl border-2 text-[10px] font-black uppercase tracking-widest shadow-lg ${badgeClass}`}>
-                  Focus: {m.actionability || 0}%
+                <div className={`px-4 py-2 rounded-xl border-2 text-[10px] font-black uppercase tracking-widest shadow-lg ${badge.className}`}>
+                  {badge.label}
                 </div>
               </div>
-              
+
               <div className="p-10 flex-1 relative z-10">
                 <p className="text-sm text-slate-600 leading-[1.8] font-medium mb-8">
-                  {m.summary}
+                  {getMeetingSummaryText(meeting)}
                 </p>
-                <div className="flex gap-4">
-                    <button 
-                         onClick={() => { setActiveChatMeeting(m); setChatHistory([]); }}
-                         className="px-6 py-3 bg-blue-600 text-white text-[11px] font-black uppercase tracking-widest rounded-xl shadow-xl shadow-blue-100 hover:bg-blue-700 hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
+                <div className="flex flex-wrap gap-4">
+                  <button
+                    onClick={() => {
+                      if (!canChat) {
+                        return;
+                      }
+
+                      setActiveChatMeeting(meeting);
+                      setChatHistory([]);
+                    }}
+                    disabled={!canChat}
+                    className="px-6 py-3 bg-blue-600 text-white text-[11px] font-black uppercase tracking-widest rounded-xl shadow-xl shadow-blue-100 hover:bg-blue-700 hover:scale-105 active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50 disabled:hover:scale-100"
+                  >
+                    <MessageSquare className="w-4 h-4" /> Ask Meeting AI
+                  </button>
+
+                  {isPendingAnalysis && (
+                    <button
+                      onClick={() => handleProcessStoredMeeting(meeting.id)}
+                      disabled={processingMeetingId === meeting.id || processingAllPending}
+                      className="px-6 py-3 bg-amber-500 text-white text-[11px] font-black uppercase tracking-widest rounded-xl shadow-xl shadow-amber-100 hover:bg-amber-600 hover:scale-105 active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50 disabled:hover:scale-100"
                     >
-                         <MessageSquare className="w-4 h-4" /> Ask Meeting AI
+                      {processingMeetingId === meeting.id ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" /> Starting AI
+                        </>
+                      ) : (
+                        <>
+                          <Wand2 className="w-4 h-4" /> Finish AI Analysis
+                        </>
+                      )}
                     </button>
-                    <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400 bg-slate-50 px-4 py-2 rounded-xl">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                        {m.tasks ? m.tasks.length : 0} Actions Extracted
+                  )}
+
+                  {isProcessing && (
+                    <div className="px-6 py-3 bg-blue-50 text-blue-700 text-[11px] font-black uppercase tracking-widest rounded-xl border border-blue-100 flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" /> AI Processing
                     </div>
+                  )}
+
+                  <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400 bg-slate-50 px-4 py-2 rounded-xl">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                    {meeting.tasks ? meeting.tasks.length : 0} Actions Extracted
+                  </div>
                 </div>
               </div>
             </div>
@@ -133,7 +297,7 @@ export default function MeetingHistory() {
         {meetings.length === 0 && (
           <div className="col-span-2 p-24 text-center border-4 border-dashed border-slate-100 rounded-[48px] bg-white shadow-inner">
             <div className="w-20 h-20 bg-slate-50 rounded-3xl flex items-center justify-center mx-auto mb-6">
-                <Calendar className="w-10 h-10 text-slate-300" />
+              <Calendar className="w-10 h-10 text-slate-300" />
             </div>
             <h3 className="text-xl font-black text-slate-400 uppercase tracking-widest">Vault Empty</h3>
             <p className="text-slate-300 mt-2 font-medium">Record a meeting to see momentum in action.</p>
@@ -141,7 +305,6 @@ export default function MeetingHistory() {
         )}
       </div>
 
-      {/* Q&A Modal */}
       {activeChatMeeting && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[999] flex items-center justify-center p-6 animate-in fade-in duration-300">
           <div className="bg-white rounded-[40px] shadow-[0_32px_128px_rgba(0,0,0,0.25)] w-full max-w-2xl flex flex-col max-h-[85vh] overflow-hidden border-8 border-white">
@@ -150,30 +313,34 @@ export default function MeetingHistory() {
                 <span className="text-[10px] font-black uppercase tracking-widest text-blue-600 mb-1 block">Context Search Intelligence</span>
                 <h3 className="text-2xl font-black text-slate-900">{activeChatMeeting.title}</h3>
               </div>
-              <button 
+              <button
                 onClick={() => setActiveChatMeeting(null)}
                 className="w-12 h-12 flex items-center justify-center rounded-2xl bg-white border border-slate-200 text-slate-400 hover:text-slate-950 transition-all hover:rotate-90"
               >
                 X
               </button>
             </div>
-            
+
             <div className="flex-1 p-8 overflow-y-auto space-y-6 bg-slate-50/20">
               {chatHistory.length === 0 && (
                 <div className="text-center py-20 px-8">
                   <div className="w-16 h-16 bg-white rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-xl shadow-slate-200/50">
-                      <MessageSquare className="w-8 h-8 text-blue-500" />
+                    <MessageSquare className="w-8 h-8 text-blue-500" />
                   </div>
-                  <h4 className="text-lg font-black text-slate-900 mb-2 uppercase tracking-tight">AI Context Chat active</h4>
-                  <p className="text-sm text-slate-400 font-medium">Ask something about the key points discussed during this call.</p>
+                  <h4 className="text-lg font-black text-slate-900 mb-2 uppercase tracking-tight">AI Context Chat Active</h4>
+                  <p className="text-sm text-slate-400 font-medium">Ask something grounded in the saved meeting transcript.</p>
                 </div>
               )}
-              {chatHistory.map((msg, i) => (
-                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in slide-in-from-${msg.role === 'user' ? 'right' : 'left'}-4 duration-300`}>
-                  <div className={`max-w-[90%] p-6 rounded-[24px] text-sm font-medium leading-relaxed shadow-xl ${
-                    msg.role === 'user' ? 'bg-blue-600 text-white rounded-br-none shadow-blue-200' : 'bg-white border-2 border-slate-50 text-slate-700 rounded-bl-none'
-                  }`}>
-                    {msg.text}
+              {chatHistory.map((message, index) => (
+                <div key={index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div
+                    className={`max-w-[90%] p-6 rounded-[24px] text-sm font-medium leading-relaxed shadow-xl ${
+                      message.role === 'user'
+                        ? 'bg-blue-600 text-white rounded-br-none shadow-blue-200'
+                        : 'bg-white border-2 border-slate-50 text-slate-700 rounded-bl-none'
+                    }`}
+                  >
+                    {message.text}
                   </div>
                 </div>
               ))}
@@ -187,15 +354,15 @@ export default function MeetingHistory() {
             </div>
 
             <form onSubmit={handleAskQuestion} className="p-8 border-t-2 border-slate-50 bg-white flex gap-4">
-              <input 
-                type="text" 
+              <input
+                type="text"
                 value={chatQuestion}
-                onChange={e => setChatQuestion(e.target.value)}
-                placeholder="Query transcript..." 
+                onChange={(event) => setChatQuestion(event.target.value)}
+                placeholder="Query transcript..."
                 className="flex-1 px-6 py-4 bg-slate-50 border-none rounded-2xl outline-none focus:ring-4 focus:ring-blue-100 transition-all font-bold text-slate-950 placeholder:text-slate-400 shadow-inner"
               />
-              <button 
-                type="submit" 
+              <button
+                type="submit"
                 disabled={isAnswering || !chatQuestion.trim()}
                 className="px-8 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-[11px] disabled:opacity-50 hover:bg-slate-800 shadow-xl active:scale-95 transition-all"
               >
@@ -207,4 +374,19 @@ export default function MeetingHistory() {
       )}
     </div>
   );
+}
+
+async function requestStoredMeetingProcessing(meetingId) {
+  const response = await fetch(apiUrl('/api/process-stored-meeting'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ meetingId }),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.error || 'Momentum could not finish AI analysis for this recording.');
+  }
+
+  return payload;
 }
