@@ -1,6 +1,8 @@
 /* global process */
 import { createClient } from '@supabase/supabase-js';
 
+const STORAGE_BUCKET = process.env.STORAGE_BUCKET || 'meetings';
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -43,7 +45,7 @@ export async function POST(request) {
 
     const storagePath = `raw/${Date.now()}_${sanitizeFileName(fileName)}`;
     const uploadResult = await supabase.storage
-      .from('meetings')
+      .from(STORAGE_BUCKET)
       .upload(storagePath, audioFile, {
         contentType,
         upsert: false,
@@ -53,7 +55,7 @@ export async function POST(request) {
       throw new Error(uploadResult.error.message || 'Supabase storage rejected the uploaded meeting.');
     }
 
-    const { data: publicUrlData } = supabase.storage.from('meetings').getPublicUrl(storagePath);
+    const { data: publicUrlData } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(storagePath);
     const transcript = await transcribeRecording(audioFile, env.groqKey);
     const analysis = await analyzeTranscript(transcript, env.geminiKey);
     const meeting = await saveMeetingRecord(supabase, {
@@ -95,7 +97,7 @@ function getEnv() {
 }
 
 async function listChunkFiles(supabase, prefix) {
-  const { data, error } = await supabase.storage.from('meetings').list(prefix, {
+  const { data, error } = await supabase.storage.from(STORAGE_BUCKET).list(prefix, {
     limit: 1000,
     sortBy: { column: 'name', order: 'asc' },
   });
@@ -110,7 +112,7 @@ async function listChunkFiles(supabase, prefix) {
 }
 
 async function downloadChunkBuffer(supabase, path) {
-  const { data, error } = await supabase.storage.from('meetings').download(path);
+  const { data, error } = await supabase.storage.from(STORAGE_BUCKET).download(path);
 
   if (error || !data) {
     throw new Error(error?.message || `Could not download chunk ${path}.`);
@@ -242,7 +244,7 @@ async function removeChunks(supabase, paths) {
     return;
   }
 
-  await supabase.storage.from('meetings').remove(paths);
+  await supabase.storage.from(STORAGE_BUCKET).remove(paths);
 }
 
 function normalizeAnalysis(analysis) {
