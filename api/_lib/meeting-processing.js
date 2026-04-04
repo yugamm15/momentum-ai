@@ -7,6 +7,7 @@ import {
   supportsV2WorkspaceSchema,
 } from './v2-persistence.js';
 import { getLegacyTableNames } from './legacy-tables.js';
+import { cleanParticipantDisplayName } from './people-directory.js';
 
 const STORAGE_BUCKET = process.env.STORAGE_BUCKET || 'meetings';
 const MAX_EMBEDDED_AUDIO_BYTES = 6 * 1024 * 1024;
@@ -1204,7 +1205,7 @@ function dedupeNames(names) {
   return Array.from(
     new Set(
       (Array.isArray(names) ? names : [])
-        .map((name) => sanitizeOptionalField(name))
+        .map((name) => cleanParticipantDisplayName(sanitizeOptionalField(name)))
         .filter(Boolean)
     )
   );

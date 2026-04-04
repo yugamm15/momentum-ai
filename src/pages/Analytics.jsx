@@ -1,4 +1,4 @@
-import { AlertTriangle, AudioLines, BarChart3, Gauge, Users, KeyRound, ShieldCheck, Database, PlugZap, Cpu, Wrench } from 'lucide-react';
+import { AlertTriangle, BarChart3, Gauge, Users, KeyRound, ShieldCheck, Database, PlugZap, Cpu, Wrench, FileText } from 'lucide-react';
 import { useWorkspace } from '../components/workspace/useWorkspace';
 import { motion } from 'framer-motion';
 
@@ -13,9 +13,19 @@ const fadeUp = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] } }
 };
 
+function meetingHasTranscriptText(meeting) {
+  if (String(meeting?.transcriptText || '').trim()) {
+    return true;
+  }
+
+  return Array.isArray(meeting?.transcript)
+    && meeting.transcript.some((segment) => String(segment?.text || '').trim());
+}
+
 export default function Analytics() {
   const { snapshot } = useWorkspace();
   const { analytics, meetings, people } = snapshot;
+  const transcriptReadyMeetings = meetings.filter(meetingHasTranscriptText).length;
 
   return (
     <motion.div 
@@ -47,7 +57,7 @@ export default function Analytics() {
           { label: 'Execution Debt', value: analytics.meetingDebt, meta: 'Open ambiguity signals', icon: Gauge },
           { label: 'Unassigned Tasks', value: analytics.unassignedTasks, meta: 'Ownership gaps', icon: Users },
           { label: 'People Tracked', value: analytics.peopleTracked || people.length, meta: 'Workspace + meeting participants', icon: BarChart3 },
-          { label: 'Speaker Detected', value: analytics.speakerAttributedMeetings || 0, meta: 'True speaker attribution', icon: AudioLines },
+          { label: 'Transcript Ready', value: transcriptReadyMeetings, meta: 'Meetings with full text', icon: FileText },
         ].map((card) => {
           const Icon = card.icon;
           return (
@@ -208,11 +218,11 @@ export default function Analytics() {
             </div>
             <div className="rounded-2xl bg-secondary/50 border border-border p-5 shadow-sm flex items-center justify-between">
               <div>
-                <span className="font-extrabold text-foreground">{analytics.speakerAttributedMeetings || 0}</span> / {meetings.length} meetings include trustworthy audio speaker isolation.
+                <span className="font-extrabold text-foreground">{transcriptReadyMeetings}</span> / {meetings.length} meetings include transcript text for direct review.
               </div>
             </div>
             <div className="rounded-2xl border border-blue-500/20 bg-blue-500/10 p-5 text-blue-700 dark:text-blue-400 shadow-sm">
-              <span className="font-extrabold">Acoustic Principle:</span> Speaker attribution is never hallucinated. If the system does not concretely isolate a vocal profile, the ledger explicitly omits attribution to prevent false execution routing.
+              <span className="font-extrabold">Attribution Principle:</span> The dashboard shows captured transcript text directly and only surfaces attribution when the source data is explicit and stable.
             </div>
           </div>
         </div>

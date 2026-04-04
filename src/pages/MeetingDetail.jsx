@@ -69,6 +69,19 @@ export default function MeetingDetail() {
     );
   }, [meeting, transcriptQuery]);
 
+  const fullTranscriptText = useMemo(() => {
+    const directText = String(meeting?.transcriptText || '').trim();
+    if (directText) {
+      return directText;
+    }
+
+    return (meeting?.transcript || [])
+      .map((segment) => String(segment.text || '').trim())
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+  }, [meeting]);
+
   if (!meeting) {
     return (
       <div className="glass-panel p-8 max-w-3xl mx-auto mt-12 text-center">
@@ -483,6 +496,22 @@ export default function MeetingDetail() {
             )}
           </div>
         )}
+
+        <div className="mb-6 rounded-2xl border border-border bg-secondary/40 p-5 shadow-sm">
+          <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.24em] text-muted-foreground mb-3">
+            <FileText className="h-4 w-4 text-primary" />
+            Full Transcript Text
+          </div>
+          {fullTranscriptText ? (
+            <div className="max-h-[28rem] overflow-y-auto rounded-xl border border-border bg-card p-4 text-sm leading-7 text-foreground whitespace-pre-wrap break-words">
+              {fullTranscriptText}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed border-border bg-background/60 p-4 text-sm font-medium text-muted-foreground">
+              No transcript text has been captured for this meeting yet.
+            </div>
+          )}
+        </div>
 
         <div className="space-y-2">
           {filteredTranscript.map((segment) => (

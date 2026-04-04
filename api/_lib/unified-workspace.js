@@ -6,6 +6,7 @@ import {
 import { extractRawMeetingMetadata, isRawUploadStatus } from './meeting-audio.js';
 import { getLegacyTableNames } from './legacy-tables.js';
 import {
+  cleanParticipantDisplayName,
   createPersonDirectory,
   displayNameForProfile,
   matchDirectoryPerson,
@@ -333,9 +334,9 @@ async function loadV2Snapshot(supabase, options = {}) {
       meeting,
       participantsByMeeting.get(meeting.id) || []
     );
-    const persistedParticipantRoster = (participantsByMeeting.get(meeting.id) || []).map((item) =>
-      buildParticipantRosterEntry(item, directory)
-    );
+    const persistedParticipantRoster = (participantsByMeeting.get(meeting.id) || [])
+      .map((item) => buildParticipantRosterEntry(item, directory))
+      .filter(Boolean);
     const fallbackParticipantRoster =
       persistedParticipantRoster.length > 0
         ? []
@@ -593,18 +594,23 @@ async function findV2TaskRow(supabase, taskId, workspaceId) {
 }
 
 function buildParticipantRosterEntry(row, directory) {
+  const displayName = cleanParticipantDisplayName(row?.display_name);
+  if (!displayName) {
+    return null;
+  }
+
   const directMatch =
     row?.matched_profile_id
       ? directory.find((record) => record.id === row.matched_profile_id)
       : null;
   const inferredMatch =
-    directMatch || matchDirectoryPerson(row?.display_name, directory);
+    directMatch || matchDirectoryPerson(displayName, directory);
   const matchedRecord =
     directMatch || (inferredMatch?.status === 'matched' ? inferredMatch.record : null);
 
   return {
     id: row.id,
-    displayName: row.display_name,
+    displayName,
     profileId: matchedRecord?.id || null,
     profileName: matchedRecord?.displayName || '',
     email: matchedRecord?.email || '',

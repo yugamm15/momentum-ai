@@ -6,6 +6,57 @@ export function normalizePersonName(value) {
     .trim();
 }
 
+const participantNoisePatterns = [
+  /\bmic\b/i,
+  /\bmicrophone\b/i,
+  /\bcamera\b/i,
+  /\bvideocam\b/i,
+  /\bturn off camera\b/i,
+  /\bturn off microphone\b/i,
+  /\bleft side panel\b/i,
+  /\bside panel\b/i,
+  /\bmeeting details\b/i,
+  /\bmeeting tools\b/i,
+  /\bleave meeting\b/i,
+  /\bleave call\b/i,
+  /\bend call\b/i,
+  /\braise hand\b/i,
+  /\bpresent now\b/i,
+  /\bopen chat\b/i,
+  /\bchat\b/i,
+  /\bmute\b/i,
+  /\bunmute\b/i,
+  /\bsend a reaction\b/i,
+  /\bmore actions\b/i,
+  /\bgetting items\b/i,
+  /\bhost controls\b/i,
+  /\bcaptions\b/i,
+  /\bapps\b/i,
+  /\bpeople\b/i,
+];
+
+export function cleanParticipantDisplayName(value) {
+  let text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!text || text.includes('@') || /\d{4,}/.test(text)) {
+    return '';
+  }
+
+  if (participantNoisePatterns.some((pattern) => pattern.test(text))) {
+    return '';
+  }
+
+  const repeatedLabelMatch = text.match(/^(.+?)\s*\1$/i);
+  if (repeatedLabelMatch?.[1]) {
+    text = repeatedLabelMatch[1].trim();
+  }
+
+  if (participantNoisePatterns.some((pattern) => pattern.test(text))) {
+    return '';
+  }
+
+  return text;
+}
+
 export function createPersonDirectory(profiles = [], membershipByProfileId = new Map()) {
   return (Array.isArray(profiles) ? profiles : [])
     .map((profile) => buildDirectoryRecord(profile, membershipByProfileId.get(profile.id)))

@@ -1,7 +1,11 @@
 /* global process */
 import { Buffer } from 'node:buffer';
 import { getLegacyTableNames } from './legacy-tables.js';
-import { createPersonDirectory, matchDirectoryPerson } from './people-directory.js';
+import {
+  cleanParticipantDisplayName,
+  createPersonDirectory,
+  matchDirectoryPerson,
+} from './people-directory.js';
 import { supportsV2WorkspaceSchema } from './v2-persistence.js';
 
 const STORAGE_BUCKET = process.env.STORAGE_BUCKET || 'meetings';
@@ -141,7 +145,7 @@ export function extractRawMeetingMetadata(meeting, participantRows = []) {
         ...(summaryMetadata.participantNames || []),
         ...parseSummaryParticipants(summary),
       ]
-        .map((value) => String(value || '').trim())
+        .map((value) => cleanParticipantDisplayName(String(value || '').trim()))
         .filter(Boolean)
     )
   );
@@ -530,7 +534,7 @@ async function syncRawMeetingParticipants(supabase, meetingId, participantNames,
   const dedupedNames = Array.from(
     new Set(
       (Array.isArray(participantNames) ? participantNames : [])
-        .map((value) => String(value || '').trim())
+        .map((value) => cleanParticipantDisplayName(String(value || '').trim()))
         .filter(Boolean)
     )
   );
@@ -581,7 +585,7 @@ function parseSummaryParticipants(summary) {
 
   return participants
     .split(',')
-    .map((value) => value.trim())
+    .map((value) => cleanParticipantDisplayName(value.trim()))
     .filter(Boolean);
 }
 

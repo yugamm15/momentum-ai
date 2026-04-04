@@ -1,3 +1,5 @@
+import { cleanParticipantDisplayName } from './people-directory';
+
 const reviewTokens = ['unclear', 'unknown', 'someone', 'missing', 'tbd'];
 const sentenceSplitPattern = /(?<=[.!?])\s+/;
 const rawUploadStatusPrefixes = ['raw-uploaded:', 'audio-uploaded:'];
@@ -128,7 +130,7 @@ function deriveParticipants(tasks) {
   return Array.from(
     new Set(
       tasks
-        .map((task) => String(task.owner || '').trim())
+        .map((task) => cleanParticipantDisplayName(String(task.owner || '').trim()))
         .filter((owner) => owner && !needsReviewForOwner(owner))
     )
   );
@@ -365,7 +367,13 @@ function weightedOverall({ clarityScore, ownershipScore, executionScore }) {
 }
 
 function summarizeParticipants(participants) {
-  return participants;
+  return Array.from(
+    new Set(
+      (Array.isArray(participants) ? participants : [])
+        .map((participant) => cleanParticipantDisplayName(String(participant || '').trim()))
+        .filter(Boolean)
+    )
+  );
 }
 
 function parseParticipantsFromRawSummary(summary) {
@@ -376,7 +384,7 @@ function parseParticipantsFromRawSummary(summary) {
 
   return match[1]
     .split(',')
-    .map((part) => part.trim())
+    .map((part) => cleanParticipantDisplayName(part.trim()))
     .filter(Boolean);
 }
 

@@ -1,4 +1,5 @@
 import {
+  cleanParticipantDisplayName,
   createPersonDirectory,
   matchDirectoryPerson,
 } from './people-directory.js';
@@ -311,7 +312,7 @@ async function insertMeetingChildren(supabase, meetingId, payload) {
   const participantRows = (Array.isArray(payload.participants) ? payload.participants : [])
     .map((participant) => ({
       meeting_id: meetingId,
-      display_name: cleanNullable(participant?.displayName),
+      display_name: cleanParticipantDisplayName(cleanNullable(participant?.displayName)),
       matched_profile_id: participant?.profileId || null,
       confidence: clampConfidence(participant?.confidence),
     }))
@@ -326,7 +327,7 @@ async function insertMeetingChildren(supabase, meetingId, payload) {
 
   const segmentRows = (payload.transcriptSegments || []).map((segment, index) => ({
     meeting_id: meetingId,
-    speaker: cleanNullable(segment.speaker),
+    speaker: cleanParticipantDisplayName(cleanNullable(segment.speaker)),
     segment_index: index,
     started_at_seconds: segment.startedAtSeconds,
     ended_at_seconds: segment.endedAtSeconds,
@@ -449,7 +450,7 @@ function resolveParticipantRoster(participants = [], directory = []) {
   return Array.from(
     new Map(
       (Array.isArray(participants) ? participants : [])
-        .map((name) => String(name || '').trim())
+        .map((name) => cleanParticipantDisplayName(String(name || '').trim()))
         .filter(Boolean)
         .map((displayName) => {
           const match = matchDirectoryPerson(displayName, directory);
@@ -489,7 +490,7 @@ function resolveTaskDirectoryMatches(tasks = [], directory = []) {
 function normalizeIncomingTranscriptSegments(segments = []) {
   return (Array.isArray(segments) ? segments : [])
     .map((segment, index) => ({
-      speaker: cleanNullable(segment?.speaker || segment?.speakerLabel),
+      speaker: cleanParticipantDisplayName(cleanNullable(segment?.speaker || segment?.speakerLabel)),
       text: cleanNullable(segment?.text),
       startedAtSeconds: normalizeSegmentSecond(
         segment?.startedAtSeconds ?? segment?.started_at_seconds,

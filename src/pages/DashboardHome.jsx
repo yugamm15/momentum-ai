@@ -3,10 +3,10 @@ import {
   AudioLines,
   ChevronRight,
   Columns3,
+  FileText,
   Target,
   Users,
   Activity,
-  Zap,
   Globe
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -32,12 +32,22 @@ const fadeUp = {
   visible: { opacity: 1, scale: 1, transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1] } }
 };
 
+function meetingHasTranscriptText(meeting) {
+  if (String(meeting?.transcriptText || '').trim()) {
+    return true;
+  }
+
+  return Array.isArray(meeting?.transcript)
+    && meeting.transcript.some((segment) => String(segment?.text || '').trim());
+}
+
 export default function DashboardHome() {
   const { snapshot, loading } = useWorkspace();
   const { analytics, meetings, tasks, people } = snapshot;
   const recentMeetings = meetings.slice(0, 4);
   const reviewQueue = tasks.filter((task) => task.needsReview).slice(0, 4);
   const activePeople = people.slice(0, 4);
+  const transcriptReadyMeetings = meetings.filter(meetingHasTranscriptText).length;
 
   const metrics = analytics.metrics || [];
 
@@ -78,7 +88,7 @@ export default function DashboardHome() {
         {[
           { label: 'Meetings Processed', val: metrics[0]?.value || '0', meta: 'Total meetings saved', icon: Globe },
           { label: 'People Tracked', val: String(analytics.peopleTracked || people.length || 0), meta: 'Active participants', icon: Users },
-          { label: 'Speaker Detected', val: String(analytics.speakerAttributedMeetings || 0), meta: 'True speaker attribution', icon: Zap },
+          { label: 'Transcript Ready', val: String(transcriptReadyMeetings), meta: 'Meetings with full text', icon: FileText },
           { label: 'Meeting Debt', val: String(analytics.meetingDebt || '0'), meta: 'Open actionable tasks', icon: Target },
         ].map((stat, i) => (
           <motion.div variants={fadeUp} key={i} className="glass-panel p-6 group relative">

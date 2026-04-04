@@ -11,6 +11,15 @@ const scorePill = {
   rose: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20',
 };
 
+function meetingHasTranscriptText(meeting) {
+  if (String(meeting?.transcriptText || '').trim()) {
+    return true;
+  }
+
+  return Array.isArray(meeting?.transcript)
+    && meeting.transcript.some((segment) => String(segment?.text || '').trim());
+}
+
 const fadeUp = {
   hidden: { opacity: 0, y: 20 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] } }
@@ -28,11 +37,9 @@ export default function Meetings() {
     const needsAttention = snapshot.meetings.filter(
       (meeting) => (meeting.meetingRisks?.length || 0) > 0 || Number(meeting.score?.overall || 0) < 75
     ).length;
-    const speakerAttributed = snapshot.meetings.filter(
-      (meeting) => meeting.transcriptAttribution === 'speaker-attributed'
-    ).length;
+    const transcriptReady = snapshot.meetings.filter(meetingHasTranscriptText).length;
 
-    return { total, withAudio, needsAttention, speakerAttributed };
+    return { total, withAudio, needsAttention, transcriptReady };
   }, [snapshot.meetings]);
 
   const meetings = useMemo(() => {
@@ -107,9 +114,9 @@ export default function Meetings() {
             { label: 'Total Meetings', value: summary.total, meta: 'Meetings captured' },
             { label: 'Meetings to check', value: summary.needsAttention, meta: 'System noted anomalies' },
             { label: 'Audio Recordings', value: summary.withAudio, meta: 'Files attached' },
-            { label: 'Recognized Voices', value: summary.speakerAttributed, meta: 'Named speakers recorded' },
+            { label: 'Transcript Ready', value: summary.transcriptReady, meta: 'Full text stored' },
           ].map((item, idx) => (
-            <div key={idx} className="bg-secondary/50 border border-border rounded-2xl p-5 hover:bg-card transition-colors shadow-sm">
+              <div key={idx} className="bg-secondary/50 border border-border rounded-2xl p-5 hover:bg-card transition-colors shadow-sm">
               <div className="text-[10px] tracking-widest uppercase font-bold text-muted-foreground mb-3">{item.label}</div>
               <div className="text-3xl font-extrabold text-foreground mb-1">{item.value}</div>
               <div className="text-xs font-semibold text-muted-foreground/80">{item.meta}</div>
@@ -208,9 +215,9 @@ export default function Meetings() {
 
                   <div className="bg-secondary rounded-xl p-3 border border-border text-xs font-medium text-muted-foreground flex items-center justify-between mt-auto shadow-sm group-hover:bg-card transition-colors">
                     <span>
-                      {meeting.transcriptAttribution === 'speaker-attributed'
-                        ? 'Speaker identities recognized automatically.'
-                        : 'Some speakers need your manual review.'}
+                      {String(meeting.transcriptText || '').trim()
+                        ? 'Transcript text is available for direct review.'
+                        : 'Transcript text is still pending for this meeting.'}
                     </span>
                     <ArrowRight className="w-4 h-4 opacity-50 group-hover:opacity-100 group-hover:translate-x-1 group-hover:text-primary transition-all" />
                   </div>
