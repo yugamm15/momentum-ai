@@ -43,7 +43,7 @@ const fadeUp = {
   hidden: { opacity: 0, y: 20 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] } }
 };
-const LONG_PRESS_MS = 600;
+const LONG_PRESS_MS = 450;
 
 export default function MeetingDetail() {
   const { meetingId } = useParams();
@@ -80,6 +80,7 @@ export default function MeetingDetail() {
   const [surfaceError, setSurfaceError] = useState('');
   const [transcriptQuery, setTranscriptQuery] = useState('');
   const meetingCardPressTimerRef = useRef(null);
+  const meetingActionMenuRef = useRef(null);
 
   const meeting = useMemo(
     () => snapshot.meetings.find((item) => item.id === meetingId),
@@ -136,6 +137,31 @@ export default function MeetingDetail() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!showMeetingActions) {
+      return undefined;
+    }
+
+    function handleDocumentPointerDown(event) {
+      const menuNode = meetingActionMenuRef.current;
+      if (!menuNode) {
+        setShowMeetingActions(false);
+        return;
+      }
+
+      if (event.target instanceof Node && menuNode.contains(event.target)) {
+        return;
+      }
+
+      setShowMeetingActions(false);
+    }
+
+    document.addEventListener('pointerdown', handleDocumentPointerDown);
+    return () => {
+      document.removeEventListener('pointerdown', handleDocumentPointerDown);
+    };
+  }, [showMeetingActions]);
 
   if (!meeting) {
     return (
@@ -362,21 +388,44 @@ export default function MeetingDetail() {
       return;
     }
 
-    if (event.pointerType === 'mouse' && event.button !== 0) {
+    if (meetingCardPressTimerRef.current !== null) {
       return;
     }
 
-    if (event.target instanceof Element && event.target.closest('a,button,input,select,textarea')) {
+    const nativeEvent = event?.nativeEvent || event;
+    const eventType = String(event?.type || '').toLowerCase();
+    const pointerType =
+      nativeEvent?.pointerType ||
+      (eventType.startsWith('touch') ? 'touch' : 'mouse');
+    const button = Number.isFinite(nativeEvent?.button) ? nativeEvent.button : 0;
+
+    if (pointerType === 'mouse' && button !== 0) {
       return;
     }
 
-    clearMeetingCardPressTimer();
+    const eventTarget = nativeEvent?.target || event?.target;
+    if (eventTarget instanceof Element && eventTarget.closest('a,button,input,select,textarea')) {
+      return;
+    }
+
     meetingCardPressTimerRef.current = window.setTimeout(() => {
       setShowMeetingActions(true);
+      clearMeetingCardPressTimer();
     }, LONG_PRESS_MS);
   }
 
   function handleMeetingCardPressEnd() {
+    clearMeetingCardPressTimer();
+  }
+
+  function handleMeetingCardContextMenu(event) {
+    const eventTarget = event?.target;
+    if (eventTarget instanceof Element && eventTarget.closest('a,button,input,select,textarea')) {
+      return;
+    }
+
+    event.preventDefault();
+    setShowMeetingActions(true);
     clearMeetingCardPressTimer();
   }
 
@@ -399,8 +448,14 @@ export default function MeetingDetail() {
           className="glass-panel p-8 md:p-10 relative overflow-hidden group"
           onPointerDown={handleMeetingCardPressStart}
           onPointerUp={handleMeetingCardPressEnd}
-          onPointerLeave={handleMeetingCardPressEnd}
           onPointerCancel={handleMeetingCardPressEnd}
+          onMouseDown={handleMeetingCardPressStart}
+          onMouseUp={handleMeetingCardPressEnd}
+          onMouseLeave={handleMeetingCardPressEnd}
+          onTouchStart={handleMeetingCardPressStart}
+          onTouchEnd={handleMeetingCardPressEnd}
+          onTouchCancel={handleMeetingCardPressEnd}
+          onContextMenu={handleMeetingCardContextMenu}
         >
           <div className="absolute top-0 right-0 p-12 opacity-0 group-hover:opacity-[0.03] dark:group-hover:opacity-5 transition-opacity duration-1000 pointer-events-none text-foreground">
             <AudioLines className="w-64 h-64 scale-150 -rotate-12" />
@@ -408,14 +463,12 @@ export default function MeetingDetail() {
           <AnimatePresence>
             {showMeetingActions && (
               <motion.div
+                ref={meetingActionMenuRef}
                 initial={{ opacity: 0, y: 8, scale: 0.98 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 6, scale: 0.98 }}
                 className="absolute bottom-5 right-5 z-20 w-[min(18rem,90%)] rounded-2xl border border-border bg-card p-3 shadow-2xl"
               >
-                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground mb-2 px-1">
-                  Meeting Actions
-                </div>
                 <div className="space-y-2">
                   <button
                     type="button"
@@ -501,9 +554,6 @@ export default function MeetingDetail() {
               <span className="rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 px-3 py-1.5 text-xs font-bold shadow-sm">{meeting.tasks.length} Tasks</span>
               <span className="rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 px-3 py-1.5 text-xs font-bold shadow-sm">
                 {meeting.audioUrl ? 'Audio Recording Attached' : 'Text Transcript Only'}
-              </span>
-              <span className="rounded-lg border border-dashed border-border bg-background px-3 py-1.5 text-[11px] font-semibold text-muted-foreground">
-                Press and hold this card for actions
               </span>
             </div>
           </div>
