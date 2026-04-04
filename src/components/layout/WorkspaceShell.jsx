@@ -65,7 +65,7 @@ const pageMeta = [
     match: (pathname) => pathname.startsWith('/dashboard/upload'),
     label: 'Upload',
     title: 'Safe fallback intake',
-    description: 'Keep the demo reliable with a manual route that preserves the working pipeline.',
+    description: 'Use the manual intake route when you need to process a real recording outside the extension.',
     primaryAction: { to: '/dashboard/meetings', label: 'View processed meetings' },
     secondaryAction: { to: '/dashboard', label: 'Back to overview' },
   },
@@ -73,23 +73,19 @@ const pageMeta = [
     match: (pathname) => pathname.startsWith('/dashboard/settings'),
     label: 'Settings',
     title: 'Connection and rollout state',
-    description: 'Keep the product honest: what is wired, what is demo-only, and what still needs admin rollout.',
+    description: 'Keep the product honest: what is wired, what is live, and what still needs admin rollout.',
     primaryAction: { to: '/dashboard/upload', label: 'Open upload center' },
     secondaryAction: { to: '/dashboard', label: 'Return to overview' },
   },
 ];
 
 function sourceCopy(source) {
-  if (source === 'mixed') {
-    return 'Live plus seeded';
+  if (source === 'error') {
+    return 'Unavailable';
   }
 
-  if (source === 'seeded-fallback') {
-    return 'Seeded fallback';
-  }
-
-  if (source === 'seeded') {
-    return 'Seeded demo';
+  if (source === 'empty') {
+    return 'Empty workspace';
   }
 
   return 'Live workspace';
@@ -258,15 +254,15 @@ export default function WorkspaceShell({ session }) {
                 <div className="flex h-10 w-10 items-center justify-center rounded-[16px] bg-emerald-400/12 text-emerald-200">
                   <ShieldCheck className="h-5 w-5" />
                 </div>
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-semibold text-white">
-                    {session?.user?.email || 'Demo workspace mode'}
-                  </div>
-                  <div className="mt-1 text-xs leading-6 text-slate-400">
-                    Live pipeline preserved. UI and workflow now layer on top more cleanly.
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold text-white">
+                      {session?.user?.email || 'Workspace session'}
+                    </div>
+                    <div className="mt-1 text-xs leading-6 text-slate-400">
+                      Real meeting data, real tasks, and the live execution pipeline.
+                    </div>
                   </div>
                 </div>
-              </div>
 
               <div className="grid gap-2">
                 <button
@@ -283,7 +279,7 @@ export default function WorkspaceShell({ session }) {
                   className="inline-flex items-center justify-center gap-2 rounded-[18px] bg-white px-3 py-3 text-sm font-semibold text-slate-950 transition hover:bg-slate-100"
                 >
                   <LogOut className="h-4 w-4" />
-                  {session ? 'Sign out' : 'Leave demo'}
+                  {session ? 'Sign out' : 'Exit workspace'}
                 </button>
               </div>
             </div>
@@ -341,7 +337,7 @@ export default function WorkspaceShell({ session }) {
 
           {error ? (
             <div className="momentum-card mb-6 border-amber-200/70 bg-amber-50/90 px-5 py-4 text-sm text-amber-900">
-              Momentum fell back to the seeded demo workspace because live data could not be loaded cleanly. The upload path is still untouched, and the core product flow remains available.
+              Momentum could not load the live workspace snapshot. Connect Supabase and the backend APIs to populate this workspace with real records.
             </div>
           ) : null}
 

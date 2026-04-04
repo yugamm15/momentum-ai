@@ -1,7 +1,27 @@
-import { baseTasks, liveTasks, meetings as seededMeetings } from '../data/demoData.js';
-
 const reviewTokens = ['unclear', 'unknown', 'someone', 'missing', 'tbd'];
 const sentenceSplitPattern = /(?<=[.!?])\s+/;
+const placeholderMeetingTitles = [
+  'brief interaction',
+  'brief exchange',
+  'transcript analysis',
+  'meeting analysis: no content',
+  'meeting notes (no content)',
+  'empty transcript meeting',
+  'empty meeting transcript analysis',
+  'unclear meeting transcript',
+  'unclear meeting content',
+  'brief uninformative transcript',
+  'no clear meeting title',
+];
+const placeholderTaskTitles = [
+  'complete an unspecified task',
+  'untitled follow-up',
+  'make it',
+  'do it',
+  'do this',
+  'follow up',
+  'action item',
+];
 const statusMap = {
   todo: 'pending',
   pending: 'pending',
@@ -48,13 +68,10 @@ function splitSentences(text) {
     .filter(Boolean);
 }
 
-function toConfidence(value, fallback = 0.78) {
-  const numeric = Number.parseFloat(value);
-  if (!Number.isNaN(numeric) && numeric > 0) {
-    return Math.max(0.45, Math.min(0.99, numeric));
-  }
-
-  return fallback;
+function normalizedWordList(text) {
+  return String(text || '')
+    .toLowerCase()
+    .match(/[a-z0-9]+/g) || [];
 }
 
 function niceTimeFromDate(value) {
@@ -119,6 +136,39 @@ function normalizeTaskTitle(title) {
   return normalized || 'Untitled follow-up';
 }
 
+function looksLikePlaceholderMeetingTitle(title) {
+  const normalized = String(title || '').trim().toLowerCase();
+  return (
+    placeholderMeetingTitles.includes(normalized) ||
+    normalized.startsWith('meeting review for ')
+  );
+}
+
+function looksLikePlaceholderTaskTitle(title) {
+  const normalized = String(title || '').trim().toLowerCase();
+  if (!normalized) {
+    return true;
+  }
+
+  if (placeholderTaskTitles.includes(normalized)) {
+    return true;
+  }
+
+  const words = normalizedWordList(normalized);
+  const genericWords = ['make', 'do', 'task', 'it', 'this'];
+  return words.length <= 2 && words.every((word) => genericWords.includes(word));
+}
+
+function transcriptWordCount(text) {
+  return normalizedWordList(text).length;
+}
+
+function transcriptLooksLowSignal(text) {
+  const normalized = String(text || '').trim().toLowerCase();
+  const words = transcriptWordCount(normalized);
+  return ['you', 'you you', 'ok', 'okay', 'hello', 'hi'].includes(normalized) || words <= 2;
+}
+
 function bestSourceSnippet(taskTitle, transcriptSegments, summary) {
   const titleWords = String(taskTitle || '')
     .toLowerCase()
@@ -155,9 +205,55 @@ function normalizeLegacyTask(task, meeting, transcriptSegments) {
     needsReview,
     sourceSnippet: bestSourceSnippet(task.title, transcriptSegments, meeting.summaryParagraph),
     isEditable: true,
-    isSeeded: false,
     createdAt: task.created_at,
   };
+}
+
+function shouldKeepLegacyTask(task, meeting) {
+  const title = normalizeTaskTitle(task.title);
+  const titlePlaceholder = looksLikePlaceholderTaskTitle(title);
+  const owner = String(task.assignee || '').trim();
+  const dueDate = String(task.deadline || '').trim();
+  const transcriptWords = transcriptWordCount(meeting.transcript);
+
+  if (!titlePlaceholder) {
+    return true;
+  }
+
+  if (!owner || needsReviewForOwner(owner)) {
+    return false;
+  }
+
+  if (!dueDate) {
+    return false;
+  }
+
+  if (transcriptWords < 12) {
+    return false;
+  }
+
+  return false;
+}
+
+export function shouldKeepLegacyMeeting(meeting, legacyTasks = []) {
+  const transcript = String(meeting?.transcript || '').trim();
+  const title = String(meeting?.title || '').trim();
+  const usableTasks = legacyTasks.filter((task) => shouldKeepLegacyTask(task, meeting));
+  const wordCount = transcriptWordCount(transcript);
+
+  if (!transcript && usableTasks.length === 0) {
+    return false;
+  }
+
+  if (transcriptLooksLowSignal(transcript) && usableTasks.length === 0) {
+    return false;
+  }
+
+  if (looksLikePlaceholderMeetingTitle(title) && wordCount < 8 && usableTasks.length === 0) {
+    return false;
+  }
+
+  return true;
 }
 
 function buildMeetingRisks({ tasks, transcriptSegments, clarityScore, executionScore }) {
@@ -244,80 +340,18 @@ function summarizeParticipants(participants) {
   return participants;
 }
 
-export function transformSeededMeeting(seed, seededTaskList) {
-  const tasks = seededTaskList
-    .filter((task) => task.meetingId === seed.id)
-    .map((task) => ({
-      ...task,
-      sourceMeetingId: seed.id,
-      sourceMeeting: seed.aiTitle,
-      owner: task.owner,
-      isEditable: false,
-      isSeeded: true,
-      status: normalizeStatus(task.status, task.needsReview),
-      confidence: toConfidence(task.confidence, 0.82),
-    }));
-
-  const score = {
-    overall: Number(seed.score?.overall || 80),
-    clarity: Number(seed.score?.clarity || 80),
-    ownership: Number(seed.score?.ownership || 80),
-    execution: Number(seed.score?.execution || 80),
-  };
-
-  return {
-    id: seed.id,
-    aiTitle: seed.aiTitle,
-    rawTitle: seed.rawTitle,
-    timeLabel: seed.time,
-    createdAt: seed.time,
-    source: seed.source || 'Google Meet',
-    participants: seed.participants,
-    processingStatus: 'ready',
-    processingSummary: seed.processingSummary || 'Momentum is ready.',
-    summaryParagraph: seed.summary,
-    summaryBullets: seed.bullets || [],
-    decisions: (seed.decisions || []).map((decision, index) => ({
-      id: `${seed.id}-decision-${index + 1}`,
-      text: decision.text,
-      confidence: toConfidence(decision.confidence, 0.91),
-      sourceSnippet: seed.transcript?.[index]?.text || seed.summary,
-    })),
-    tasks,
-    checklist: (seed.checklist || []).map((item) => ({
-      ...item,
-      linkedTaskId: tasks.find((task) => item.text.toLowerCase().includes(task.title.toLowerCase().slice(0, 10)))?.id || null,
-    })),
-    meetingRisks: (seed.meetingRisks || []).map((risk, index) => ({
-      id: `${seed.id}-risk-${index + 1}`,
-      ...risk,
-    })),
-    transcript: (seed.transcript || []).map((segment, index) => ({
-      id: `${seed.id}-segment-${index + 1}`,
-      ...segment,
-    })),
-    score: {
-      ...score,
-      color: scoreColor(score.overall),
-    },
-    rationale: seed.rationale,
-    isSeeded: true,
-  };
-}
-
-export function createSeededWorkspaceSnapshot() {
-  const seededTaskList = [...baseTasks, ...liveTasks];
-  const meetings = seededMeetings.map((meeting) => transformSeededMeeting(meeting, seededTaskList));
-  const tasks = meetings.flatMap((meeting) => meeting.tasks);
-  return { meetings, tasks };
-}
-
 export function transformLegacyMeeting(meeting, legacyTasks = []) {
+  if (!shouldKeepLegacyMeeting(meeting, legacyTasks)) {
+    return null;
+  }
+
   const transcriptSegments = transcriptSegmentsFromText(meeting.transcript);
   const aiTitle = String(meeting.title || '').trim() || 'Untitled execution review';
   const summaryParagraph =
     String(meeting.summary || '').trim() || 'Momentum stored the transcript, but the meeting summary still needs a quick review.';
-  const tasks = legacyTasks.map((task) => normalizeLegacyTask(task, { id: meeting.id, aiTitle, summaryParagraph }, transcriptSegments));
+  const tasks = legacyTasks
+    .filter((task) => shouldKeepLegacyTask(task, meeting))
+    .map((task) => normalizeLegacyTask(task, { id: meeting.id, aiTitle, summaryParagraph }, transcriptSegments));
   const participants = summarizeParticipants(deriveParticipants(tasks));
   const explicitOwners = tasks.filter((task) => task.owner).length;
   const explicitDeadlines = tasks.filter((task) => task.dueDate).length;
@@ -373,35 +407,5 @@ export function transformLegacyMeeting(meeting, legacyTasks = []) {
     },
     rationale: buildRationale({ clarityScore, ownershipScore, executionScore, tasks }),
     transcriptText: meeting.transcript,
-    isSeeded: false,
   };
-}
-
-export function findSeededAnswer(meeting, question) {
-  const query = String(question || '').trim().toLowerCase();
-  if (!query) {
-    return 'Ask about decisions, owners, deadlines, or the transcript and Momentum will ground the answer in this meeting.';
-  }
-
-  const sources = [
-    meeting.summaryParagraph,
-    ...(meeting.decisions || []).map((item) => item.text),
-    ...(meeting.tasks || []).map((task) => `${task.title}. Owner: ${task.owner || 'Unknown'}. Due: ${task.dueDate || 'Missing'}.`),
-    ...(meeting.transcript || []).map((segment) => segment.text),
-  ];
-
-  const keywords = query.match(/[a-z0-9]{3,}/g) || [];
-  const ranked = sources
-    .map((text) => ({
-      text,
-      score: keywords.reduce((total, keyword) => total + (String(text).toLowerCase().includes(keyword) ? 1 : 0), 0),
-    }))
-    .filter((item) => item.score > 0)
-    .sort((left, right) => right.score - left.score);
-
-  if (ranked.length > 0) {
-    return ranked.slice(0, 2).map((item) => item.text).join(' ');
-  }
-
-  return 'This seeded meeting does not directly support that answer, so Momentum would flag it for manual review instead of guessing.';
 }

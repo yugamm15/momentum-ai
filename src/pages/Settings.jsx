@@ -105,10 +105,10 @@ export default function Settings() {
         {[
           {
             label: 'Auth and access',
-            title: yesNo(isSupabaseConfigured, 'Client auth ready', 'Demo-first fallback'),
+            title: yesNo(isSupabaseConfigured, 'Client auth ready', 'Client auth missing'),
             body: isSupabaseConfigured
               ? 'Magic-link auth is configured on the client side.'
-              : 'The dashboard can still run in demo mode while auth is being finalized.',
+              : 'Client auth is not configured on this deployment yet.',
             icon: ShieldCheck,
           },
           {
@@ -184,12 +184,12 @@ export default function Settings() {
               )}
             </div>
             <div className="momentum-card-soft px-4 py-4">
-              Demo workspace:
+              Workspace readiness:
               {' '}
               {yesNo(
-                status.schema.demoWorkspaceAvailable,
-                'present in the server schema.',
-                'not yet created in the current V2 schema.'
+                status.schema.mode !== 'unavailable',
+                'the server can resolve a real workspace schema path.',
+                'the server schema is not reachable on this deployment.'
               )}
             </div>
           </div>

@@ -292,20 +292,14 @@ export default function Tasks() {
                       <div className="text-xs font-semibold text-slate-500">
                         {task.needsReview ? 'Review before trusting' : `Confidence ${(task.confidence * 100).toFixed(0)}%`}
                       </div>
-                      {!task.isSeeded ? (
-                        <button
-                          type="button"
-                          onClick={() => cycleStatus(task)}
-                          disabled={savingId === task.id}
-                          className="rounded-[18px] border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:opacity-70"
-                        >
-                          {savingId === task.id ? 'Saving...' : 'Move forward'}
-                        </button>
-                      ) : (
-                        <div className="rounded-[18px] bg-slate-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                          Seeded
-                        </div>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => cycleStatus(task)}
+                        disabled={savingId === task.id}
+                        className="rounded-[18px] border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:opacity-70"
+                      >
+                        {savingId === task.id ? 'Saving...' : 'Move forward'}
+                      </button>
                     </div>
                   </div>
                 ))}

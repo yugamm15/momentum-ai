@@ -1,5 +1,4 @@
 import {
-  createSeededWorkspaceSnapshot,
   normalizeStatus,
   scoreColor,
   transformLegacyMeeting,
@@ -9,13 +8,11 @@ import { getLegacyTableNames } from './legacy-tables.js';
 let schemaModePromise = null;
 
 export async function getUnifiedWorkspaceSnapshot(supabase) {
-  const seeded = createSeededWorkspaceSnapshot();
-
   try {
     const mode = await detectSchemaMode(supabase);
     const liveSnapshot = mode === 'v2' ? await loadV2Snapshot(supabase) : await loadLegacySnapshot(supabase);
-    const meetings = [...liveSnapshot.meetings, ...seeded.meetings];
-    const tasks = [...liveSnapshot.tasks, ...seeded.tasks];
+    const meetings = liveSnapshot.meetings;
+    const tasks = liveSnapshot.tasks;
 
     return {
       meetings,
@@ -23,17 +20,17 @@ export async function getUnifiedWorkspaceSnapshot(supabase) {
       liveMeetings: liveSnapshot.meetings,
       liveTasks: liveSnapshot.tasks,
       analytics: buildAnalytics(meetings, tasks),
-      source: liveSnapshot.meetings.length > 0 ? 'mixed' : 'seeded',
+      source: liveSnapshot.meetings.length > 0 ? 'live' : 'empty',
       mode,
     };
   } catch (error) {
     return {
-      meetings: seeded.meetings,
-      tasks: seeded.tasks,
+      meetings: [],
+      tasks: [],
       liveMeetings: [],
       liveTasks: [],
-      analytics: buildAnalytics(seeded.meetings, seeded.tasks),
-      source: 'seeded-fallback',
+      analytics: buildAnalytics([], []),
+      source: 'error',
       mode: 'fallback',
       error: error.message || 'Momentum could not build the workspace snapshot.',
     };
@@ -179,12 +176,14 @@ async function loadLegacySnapshot(supabase) {
     throw tasksError;
   }
 
-  const meetings = (liveMeetings || []).map((meeting) =>
-    transformLegacyMeeting(
-      meeting,
-      (liveTasks || []).filter((task) => task.meeting_id === meeting.id)
+  const meetings = (liveMeetings || [])
+    .map((meeting) =>
+      transformLegacyMeeting(
+        meeting,
+        (liveTasks || []).filter((task) => task.meeting_id === meeting.id)
+      )
     )
-  );
+    .filter(Boolean);
 
   return {
     meetings,
@@ -253,7 +252,6 @@ async function loadV2Snapshot(supabase) {
       needsReview: Boolean(task.needs_review),
       sourceSnippet: task.source_snippet || '',
       isEditable: true,
-      isSeeded: false,
     }));
     const overall = Number(meeting.overall_score || 0);
 
@@ -302,7 +300,6 @@ async function loadV2Snapshot(supabase) {
       rationale:
         meeting.score_rationale ||
         'Momentum analyzed this meeting using the richer V2 execution model.',
-      isSeeded: false,
       isV2: true,
     };
   });
@@ -343,7 +340,8 @@ async function loadLegacyRowsIfAvailable(supabase, legacyTables, v2Meetings) {
         meeting,
         (legacyTasks || []).filter((task) => task.meeting_id === meeting.id)
       )
-    );
+    )
+    .filter(Boolean);
 }
 
 function buildAnalytics(meetings, tasks) {

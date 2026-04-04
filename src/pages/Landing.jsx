@@ -80,7 +80,7 @@ export default function Landing({ session }) {
                 <ArrowRight className="h-4 w-4" />
               </Link>
               <Link to="/dashboard" className="momentum-button-secondary">
-                View the demo workspace
+                Open the workspace
               </Link>
             </div>
 

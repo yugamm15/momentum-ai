@@ -35,7 +35,7 @@ async function ensureDemoWorkspace(supabase) {
   const { data, error } = await supabase
     .from('workspaces')
     .insert({
-      name: 'Momentum Demo Workspace',
+      name: 'Momentum Workspace',
       slug: 'momentum-demo',
       plan: 'hackathon',
     })

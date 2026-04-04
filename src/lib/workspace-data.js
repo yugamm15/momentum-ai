@@ -1,8 +1,6 @@
 import { apiUrl } from './api';
 import { getSupabaseClient, isSupabaseConfigured } from './supabase';
 import {
-  createSeededWorkspaceSnapshot,
-  findSeededAnswer,
   scoreColor,
   transformLegacyMeeting,
 } from './meeting-transforms';
@@ -65,8 +63,6 @@ function buildAnalytics(meetings, tasks) {
 }
 
 export async function fetchWorkspaceSnapshot() {
-  const seeded = createSeededWorkspaceSnapshot();
-
   const apiSnapshot = await fetchWorkspaceSnapshotFromApi();
   if (apiSnapshot) {
     return apiSnapshot;
@@ -74,12 +70,13 @@ export async function fetchWorkspaceSnapshot() {
 
   if (!isSupabaseConfigured) {
     return {
-      meetings: seeded.meetings,
-      tasks: seeded.tasks,
+      meetings: [],
+      tasks: [],
       liveMeetings: [],
       liveTasks: [],
-      analytics: buildAnalytics(seeded.meetings, seeded.tasks),
-      source: 'seeded',
+      analytics: buildAnalytics([], []),
+      source: 'empty',
+      error: 'Supabase is not configured, so no real workspace data can be loaded yet.',
     };
   }
 
@@ -98,16 +95,18 @@ export async function fetchWorkspaceSnapshot() {
       throw tasksError;
     }
 
-    const transformedLiveMeetings = (liveMeetings || []).map((meeting) =>
-      transformLegacyMeeting(
-        meeting,
-        (liveTasks || []).filter((task) => task.meeting_id === meeting.id)
+    const transformedLiveMeetings = (liveMeetings || [])
+      .map((meeting) =>
+        transformLegacyMeeting(
+          meeting,
+          (liveTasks || []).filter((task) => task.meeting_id === meeting.id)
+        )
       )
-    );
+      .filter(Boolean);
 
     const transformedLiveTasks = transformedLiveMeetings.flatMap((meeting) => meeting.tasks);
-    const meetings = [...transformedLiveMeetings, ...seeded.meetings];
-    const tasks = [...transformedLiveTasks, ...seeded.tasks];
+    const meetings = transformedLiveMeetings;
+    const tasks = transformedLiveTasks;
 
     return {
       meetings,
@@ -115,16 +114,16 @@ export async function fetchWorkspaceSnapshot() {
       liveMeetings: transformedLiveMeetings,
       liveTasks: transformedLiveTasks,
       analytics: buildAnalytics(meetings, tasks),
-      source: transformedLiveMeetings.length > 0 ? 'mixed' : 'seeded',
+      source: transformedLiveMeetings.length > 0 ? 'live' : 'empty',
     };
   } catch (error) {
     return {
-      meetings: seeded.meetings,
-      tasks: seeded.tasks,
+      meetings: [],
+      tasks: [],
       liveMeetings: [],
       liveTasks: [],
-      analytics: buildAnalytics(seeded.meetings, seeded.tasks),
-      source: 'seeded-fallback',
+      analytics: buildAnalytics([], []),
+      source: 'error',
       error: error.message || 'Momentum could not load the live workspace snapshot.',
     };
   }
@@ -137,7 +136,7 @@ export async function updateWorkspaceTask(taskId, updates) {
   }
 
   if (!isSupabaseConfigured) {
-    return { ok: true, mode: 'demo' };
+    throw new Error('Supabase is not configured, so tasks cannot be updated yet.');
   }
 
   const supabase = getSupabaseClient();
@@ -174,7 +173,7 @@ export async function createWorkspaceTask(task) {
   }
 
   if (!isSupabaseConfigured) {
-    return { ok: true, mode: 'demo' };
+    throw new Error('Supabase is not configured, so tasks cannot be created yet.');
   }
 
   const supabase = getSupabaseClient();
@@ -194,10 +193,6 @@ export async function createWorkspaceTask(task) {
 }
 
 export async function askMeetingQuestion(meeting, question) {
-  if (meeting?.isSeeded) {
-    return findSeededAnswer(meeting, question);
-  }
-
   const response = await fetch(apiUrl('/api/ask-meeting-question'), {
     method: 'POST',
     headers: {

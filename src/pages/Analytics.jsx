@@ -37,7 +37,7 @@ export default function Analytics() {
           { label: 'Meeting debt', value: analytics.meetingDebt, meta: 'Open ambiguity signals', icon: Gauge },
           { label: 'Unassigned tasks', value: analytics.unassignedTasks, meta: 'Ownership gaps', icon: Users },
           { label: 'Missing deadlines', value: analytics.missingDeadlines, meta: 'Execution timing gaps', icon: AlertTriangle },
-          { label: 'Meetings tracked', value: meetings.length, meta: 'Seeded plus live history', icon: BarChart3 },
+          { label: 'Meetings tracked', value: meetings.length, meta: 'Real workspace history', icon: BarChart3 },
         ].map((card) => {
           const Icon = card.icon;
           return (

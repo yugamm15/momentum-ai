@@ -85,7 +85,7 @@ export default function Meetings() {
 
         <div className="mt-6 grid gap-3 md:grid-cols-3">
           {[
-            { label: 'Meetings visible', value: summary.total, meta: 'Live plus seeded history' },
+            { label: 'Meetings visible', value: summary.total, meta: 'Real meetings in this workspace' },
             { label: 'Need attention', value: summary.needsAttention, meta: 'Risky or low-score meetings' },
             { label: 'Average score', value: summary.averageScore, meta: 'Execution quality baseline' },
           ].map((item) => (

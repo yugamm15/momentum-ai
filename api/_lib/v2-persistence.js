@@ -1,5 +1,5 @@
 const DEMO_WORKSPACE_SLUG = 'momentum-demo';
-const DEMO_WORKSPACE_NAME = 'Momentum Demo Workspace';
+const DEMO_WORKSPACE_NAME = 'Momentum Workspace';
 const ANALYSIS_VERSION = 'v2-rich-analysis';
 
 let schemaSupportPromise = null;

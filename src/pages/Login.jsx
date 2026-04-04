@@ -26,10 +26,6 @@ export default function Login({ session }) {
     try {
       const result = await sendMagicLink(email);
       setMessage(result.message);
-
-      if (result.demoMode) {
-        navigate('/dashboard');
-      }
     } catch (submitError) {
       setError(submitError.message || 'Momentum could not start sign-in.');
     } finally {
@@ -64,7 +60,7 @@ export default function Login({ session }) {
               Bring meetings into an execution system, not a note graveyard.
             </h1>
             <p className="mt-5 max-w-xl text-base leading-8 text-slate-600">
-              Use email login for the real product story, or keep moving in the demo workspace while the rest of the stack keeps getting sharper.
+              Use email login to access the real workspace, real uploads, and the live execution system.
             </p>
           </div>
 
@@ -103,7 +99,7 @@ export default function Login({ session }) {
             <ShieldCheck className="h-4 w-4 text-emerald-600" />
             {isSupabaseConfigured
               ? 'Auth is configured. This flow sends a real magic link.'
-              : 'Auth is not configured yet, so Momentum keeps the demo workspace open for build velocity.'}
+              : 'Auth is not configured yet on this deployment.'}
           </div>
         </section>
 
@@ -111,36 +107,27 @@ export default function Login({ session }) {
           <div className="relative">
             <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-sky-100">
               <Sparkles className="h-4 w-4" />
-              Demo workspace
+              Real workspace access
             </div>
 
             <h2 className="mt-6 text-4xl font-semibold tracking-tight text-white">
-              Ship first. Keep the auth story believable.
+              Sign in to the real system.
             </h2>
             <p className="mt-4 max-w-md text-sm leading-7 text-slate-300">
-              The hackathon version should never feel blocked by auth polish. The workspace stays explorable while the production posture matures underneath it.
+              Momentum now expects live data. Once auth is configured, this login sends people into the real workspace instead of a placeholder environment.
             </p>
 
             <div className="mt-8 grid gap-3">
               {[
-                'Seeded meeting history so the workspace looks alive before the live demo',
-                'A signature meeting detail page with decisions, risks, tasks, and transcript evidence',
-                'Cross-meeting task board and analytics that sell the SaaS narrative fast',
+                'Real meeting uploads flow into the actual workspace snapshot',
+                'Meeting detail pages show live decisions, risks, tasks, and transcript evidence',
+                'Cross-meeting task board and analytics reflect only real records',
               ].map((item) => (
                 <div key={item} className="rounded-[22px] border border-white/10 bg-white/5 px-4 py-4 text-sm text-slate-200">
                   {item}
                 </div>
               ))}
             </div>
-
-            <button
-              type="button"
-              onClick={() => navigate('/dashboard')}
-              className="mt-8 inline-flex w-full items-center justify-center gap-2 rounded-[20px] bg-gradient-to-r from-sky-300 via-sky-400 to-blue-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:-translate-y-0.5"
-            >
-              Continue in demo workspace
-              <ArrowRight className="h-4 w-4" />
-            </button>
           </div>
         </section>
       </div>

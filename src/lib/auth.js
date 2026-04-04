@@ -45,10 +45,7 @@ export async function sendMagicLink(email) {
   }
 
   if (!isSupabaseConfigured) {
-    return {
-      demoMode: true,
-      message: 'Supabase auth is not configured, so Momentum is opening the demo workspace instead.',
-    };
+    throw new Error('Supabase auth is not configured yet.');
   }
 
   const supabase = getSupabaseClient();
@@ -65,7 +62,6 @@ export async function sendMagicLink(email) {
   }
 
   return {
-    demoMode: false,
     message: `Magic link sent to ${normalizedEmail}.`,
   };
 }
