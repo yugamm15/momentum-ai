@@ -39,7 +39,7 @@ export default function MeetingProcessor({ onComplete }) {
 
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(payload?.error || 'Momentum could not process this recording.');
+        throw new Error(payload?.error || 'Moméntum could not process this recording.');
       }
 
       setStatus('done');
@@ -47,7 +47,7 @@ export default function MeetingProcessor({ onComplete }) {
         payload?.detail ||
           (payload?.analysisComplete
             ? 'Transcript, summary, and tasks are ready.'
-            : 'Raw audio was stored. Finish AI analysis later from Meeting Vault.')
+            : 'Raw audio was stored. Finish AI analysis later from the Meeting Library.')
       );
 
       if (onComplete) {
@@ -60,19 +60,23 @@ export default function MeetingProcessor({ onComplete }) {
   };
 
   return (
-    <div className="momentum-card mx-auto max-w-3xl p-8">
-      <div className="mx-auto max-w-2xl text-center">
-        <div className="momentum-pill-accent mx-auto">Manual meeting upload</div>
-        <h2 className="mt-4 text-4xl font-semibold tracking-tight text-slate-950">
-          Process a real recording without the extension
+    <div className="glass-panel mx-auto max-w-3xl p-8 md:p-12 relative overflow-hidden group">
+      <div className="absolute top-0 right-0 p-8 opacity-[0.03] dark:opacity-5 pointer-events-none text-foreground">
+        <UploadCloud className="w-64 h-64 rotate-12 scale-150" />
+      </div>
+      
+      <div className="relative z-10 mx-auto max-w-2xl text-center">
+        <div className="inline-flex items-center gap-2 px-3 py-1 mb-4 rounded-full bg-primary/10 border border-primary/20 text-[10px] uppercase font-bold text-primary tracking-widest shadow-sm">Manual Upload</div>
+        <h2 className="mt-2 text-3xl sm:text-4xl font-extrabold tracking-tight text-foreground mb-4">
+          Process a meeting file directly
         </h2>
-        <p className="mt-4 text-base leading-8 text-slate-600">
-          Upload a meeting file and let the server handle transcription, extraction, scoring, and storage in the same live pipeline used by Momentum.
+        <p className="mt-2 max-w-xl mx-auto text-lg font-medium text-muted-foreground leading-relaxed">
+          Upload a meeting recording and let Moméntum handle transcription, task extraction, and storage in your workspace.
         </p>
       </div>
 
       <div
-        className="momentum-card-soft mt-8 cursor-pointer border-2 border-dashed border-slate-300 bg-slate-50/85 p-10 transition hover:border-sky-300 hover:bg-white"
+        className="relative z-10 mt-10 cursor-pointer rounded-2xl border-2 border-dashed border-border bg-card/50 p-12 transition-all hover:bg-secondary/50 shadow-sm"
         onClick={() => fileInputRef.current?.click()}
       >
         <input
@@ -86,20 +90,20 @@ export default function MeetingProcessor({ onComplete }) {
         <div className="flex flex-col items-center justify-center text-center">
           {file ? (
             <>
-              <div className="flex h-16 w-16 items-center justify-center rounded-[20px] bg-sky-50 text-sky-700">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-4 shadow-sm">
                 <FileAudio className="h-8 w-8" />
               </div>
-              <p className="mt-4 font-semibold text-slate-900">{file.name}</p>
-              <p className="mt-1 text-xs text-slate-500">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+              <p className="font-bold text-foreground text-lg">{file.name}</p>
+              <p className="mt-1 text-sm font-medium text-muted-foreground">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
             </>
           ) : (
             <>
-              <div className="flex h-16 w-16 items-center justify-center rounded-[20px] bg-slate-900 text-white">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-secondary border border-border text-foreground mb-4 shadow-sm group-hover:scale-110 transition-transform duration-300">
                 <UploadCloud className="h-8 w-8" />
               </div>
-              <p className="mt-4 font-semibold text-slate-900">Click to browse or drag a recording here</p>
-              <p className="mt-1 text-xs text-slate-500">
-                Best for `.webm` recordings captured from the Momentum extension
+              <p className="font-bold text-foreground text-lg">Click to browse or drag recording</p>
+              <p className="mt-2 text-sm font-medium text-muted-foreground max-w-sm mx-auto">
+                Works best with `.webm`, `.mp3`, or `.m4a` audio files
               </p>
             </>
           )}
@@ -107,12 +111,12 @@ export default function MeetingProcessor({ onComplete }) {
       </div>
 
       {error ? (
-        <div className="momentum-card-soft mt-6 border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700">
+        <div className="relative z-10 mt-6 rounded-xl border border-destructive/20 bg-destructive/10 px-5 py-4 text-sm font-semibold text-destructive shadow-sm">
           {error}
         </div>
       ) : null}
       {detail && !error ? (
-        <div className="momentum-card-soft mt-6 border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-700">
+        <div className="relative z-10 mt-6 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-5 py-4 text-sm font-semibold text-emerald-600 dark:text-emerald-400 shadow-sm">
           {detail}
         </div>
       ) : null}
@@ -120,7 +124,7 @@ export default function MeetingProcessor({ onComplete }) {
       <button
         onClick={processMeeting}
         disabled={!file || status !== 'idle'}
-        className="momentum-button-primary mt-6 w-full"
+        className="relative z-10 button-primary mt-8 w-full py-4 text-base shadow-lg shadow-primary/20"
       >
         {status === 'idle' && 'Process meeting'}
         {status === 'uploading' && (

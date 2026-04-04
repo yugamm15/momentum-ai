@@ -5,7 +5,7 @@ import { resolveRequestWorkspaceContext } from './_lib/request-auth.js';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, cache-control',
   'Cache-Control': 'no-store',
 };
 

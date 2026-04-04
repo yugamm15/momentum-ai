@@ -1,251 +1,245 @@
-import { ArrowRight, AudioLines, Sparkles, Target, Users } from 'lucide-react';
+import {
+  ArrowRight,
+  AudioLines,
+  ChevronRight,
+  Columns3,
+  Target,
+  Users,
+  Activity,
+  Zap,
+  Globe
+} from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { useWorkspace } from '../components/workspace/useWorkspace';
 
-const scorePill = {
-  emerald: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  amber: 'bg-amber-50 text-amber-700 border-amber-200',
-  rose: 'bg-rose-50 text-rose-700 border-rose-200',
+const scoreColors = {
+  emerald: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
+  amber: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
+  rose: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20',
+};
+
+const staggerContainer = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: { staggerChildren: 0.1 }
+  }
+};
+
+const fadeUp = {
+  hidden: { opacity: 0, scale: 0.98 },
+  visible: { opacity: 1, scale: 1, transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1] } }
 };
 
 export default function DashboardHome() {
   const { snapshot, loading } = useWorkspace();
   const { analytics, meetings, tasks, people } = snapshot;
-  const recentMeetings = meetings.slice(0, 3);
+  const recentMeetings = meetings.slice(0, 4);
   const reviewQueue = tasks.filter((task) => task.needsReview).slice(0, 4);
-  const activePeople = people.slice(0, 5);
+  const activePeople = people.slice(0, 4);
+
+  const metrics = analytics.metrics || [];
 
   return (
-    <div className="space-y-6">
-      <section className="grid gap-6 xl:grid-cols-[1.18fr_0.82fr]">
-        <div className="momentum-card momentum-spotlight p-7 lg:p-8">
-          <div className="momentum-pill-accent">
-            <Sparkles className="h-4 w-4" />
-            Workspace overview
+    <motion.div 
+      initial="hidden"
+      animate="visible"
+      variants={staggerContainer}
+      className="p-6 md:p-8 xl:p-12 space-y-8 max-w-[1600px] mx-auto min-h-full"
+    >
+      {/* Header Context */}
+      <motion.header variants={fadeUp} className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
+        <div>
+          <div className="inline-flex items-center gap-2 px-3 py-1 mb-4 rounded-full bg-primary/10 border border-primary/20 text-[10px] uppercase font-bold text-primary tracking-widest shadow-sm">
+            <Activity className="w-3 h-3" />
+            Live Overview
           </div>
-          <h1 className="mt-5 max-w-4xl text-4xl font-semibold tracking-tight text-slate-950 lg:text-5xl">
-            Everything important from the meeting should still be obvious a day later.
+          <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-foreground mb-2">
+            Dashboard
           </h1>
-          <p className="mt-4 max-w-3xl text-base leading-8 text-slate-600">
-            Momentum works when the workspace keeps four things visible at once: the recording, the transcript, the people involved, and the exact follow-through still missing.
+          <p className="text-muted-foreground text-lg max-w-2xl font-medium">
+            A real-time look at your meetings, open tasks, and active people across the workspace.
           </p>
-
-          <div className="mt-7 flex flex-wrap gap-3">
-            <Link to="/dashboard/meetings" className="momentum-button-primary">
-              Open meeting library
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-            <Link to="/dashboard/tasks" className="momentum-button-secondary">
-              Review owner load
-            </Link>
-          </div>
-
-          <div className="mt-8 grid gap-4 md:grid-cols-3">
-            {[
-              {
-                label: 'Meetings processed',
-                value: analytics.metrics[0]?.value || '0',
-                meta: analytics.metrics[0]?.meta || 'No meetings yet',
-              },
-              {
-                label: 'People tracked',
-                value: String(analytics.peopleTracked || people.length || 0),
-                meta: `${analytics.matchedTaskOwners || 0} task owners matched to workspace people`,
-              },
-              {
-                label: 'Speaker-attributed recordings',
-                value: String(analytics.speakerAttributedMeetings || 0),
-                meta: 'Truthful transcript coverage today',
-              },
-            ].map((metric) => (
-              <div key={metric.label} className="momentum-card-soft p-4">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
-                  {metric.label}
-                </div>
-                <div className="momentum-number mt-3 text-3xl font-semibold text-slate-950">
-                  {metric.value}
-                </div>
-                <div className="mt-2 text-sm text-slate-500">{metric.meta}</div>
-              </div>
-            ))}
-          </div>
         </div>
-
-        <div className="momentum-dark-panel p-6">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-teal-100/70">
-                Accountability pressure
-              </div>
-              <h2 className="mt-2 text-3xl font-semibold tracking-tight text-white">
-                Meeting debt
-              </h2>
-            </div>
-            <Target className="h-5 w-5 text-teal-200" />
-          </div>
-
-          <div className="momentum-number mt-5 text-6xl font-semibold text-white">
-            {analytics.meetingDebt}
-          </div>
-          <p className="mt-4 text-sm leading-7 text-slate-300">
-            Open ambiguity across recordings: unassigned tasks, missing dates, and moments where the transcript still needs human confirmation.
-          </p>
-
-          <div className="mt-6 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-[22px] border border-white/10 bg-white/5 p-4">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                Unassigned tasks
-              </div>
-              <div className="momentum-number mt-2 text-3xl font-semibold text-white">
-                {analytics.unassignedTasks}
-              </div>
-            </div>
-            <div className="rounded-[22px] border border-white/10 bg-white/5 p-4">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                Missing deadlines
-              </div>
-              <div className="momentum-number mt-2 text-3xl font-semibold text-white">
-                {analytics.missingDeadlines}
-              </div>
-            </div>
-          </div>
+        <div className="flex gap-3">
+          <Link to="/dashboard/tasks" className="button-secondary">
+            View Tasks
+          </Link>
+          <Link to="/dashboard/meetings" className="button-primary group">
+            <span>Meeting Library</span>
+            <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+          </Link>
         </div>
-      </section>
+      </motion.header>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {analytics.metrics.map((metric) => (
-          <div key={metric.label} className="momentum-card p-5">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
-              {metric.label}
+      {/* Primary Telemetry */}
+      <motion.section variants={staggerContainer} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {[
+          { label: 'Meetings Processed', val: metrics[0]?.value || '0', meta: 'Total meetings saved', icon: Globe },
+          { label: 'People Tracked', val: String(analytics.peopleTracked || people.length || 0), meta: 'Active participants', icon: Users },
+          { label: 'Speaker Detected', val: String(analytics.speakerAttributedMeetings || 0), meta: 'True speaker attribution', icon: Zap },
+          { label: 'Meeting Debt', val: String(analytics.meetingDebt || '0'), meta: 'Open actionable tasks', icon: Target },
+        ].map((stat, i) => (
+          <motion.div variants={fadeUp} key={i} className="glass-panel p-6 group relative">
+            <div className={`absolute top-0 right-0 p-4 opacity-[0.04] dark:opacity-10 transition-transform duration-500 group-hover:scale-110 group-hover:-rotate-3 text-foreground`}>
+              <stat.icon className="w-20 h-20" />
             </div>
-            <div className="momentum-number mt-3 text-4xl font-semibold text-slate-950">
-              {metric.value}
+            <div className="relative z-10">
+              <div className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground mb-3">{stat.label}</div>
+              <div className="text-4xl lg:text-5xl font-extrabold text-foreground mb-2 tracking-tighter">{stat.val}</div>
+              <div className="text-xs font-semibold text-muted-foreground/80">{stat.meta}</div>
             </div>
-            <div className="mt-2 text-sm text-slate-500">{metric.meta}</div>
-          </div>
+          </motion.div>
         ))}
-      </section>
+      </motion.section>
 
-      <section className="grid gap-6 xl:grid-cols-[1.08fr_0.92fr]">
-        <div className="momentum-card p-6">
-          <div className="flex items-center justify-between gap-3">
+      {/* Main Grid Split */}
+      <div className="grid grid-cols-1 xl:grid-cols-[1.5fr_1fr] gap-8">
+        
+        {/* Left Column: Recent Audio Logic */}
+        <motion.div variants={staggerContainer} className="space-y-6">
+          <motion.div variants={fadeUp} className="flex justify-between items-end mb-4">
             <div>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
-                Recent recordings
-              </div>
-              <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">
-                What landed most recently
-              </h2>
+              <h2 className="text-2xl font-bold tracking-tight text-foreground">Recent Meetings</h2>
+              <p className="text-sm font-medium text-muted-foreground mt-1">The latest meetings recorded and processed.</p>
             </div>
-            <Link to="/dashboard/meetings" className="text-sm font-semibold text-sky-700">
-              View all
+            <Link to="/dashboard/meetings" className="text-sm font-bold text-primary hover:text-primary/80 transition-colors uppercase tracking-widest">
+              View All →
             </Link>
-          </div>
+          </motion.div>
 
-          <div className="mt-5 grid gap-4">
+          <div className="space-y-4">
             {recentMeetings.map((meeting) => (
-              <Link
-                key={meeting.id}
-                to={`/dashboard/meetings/${meeting.id}`}
-                className="momentum-card-soft block p-5 transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
-                      {meeting.timeLabel}
+              <motion.div variants={fadeUp} key={meeting.id}>
+                <Link to={`/dashboard/meetings/${meeting.id}`} className="block glass-panel p-6 group hover:border-primary/30 relative overflow-hidden transition-all duration-300">
+                  <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-brand-gradient opacity-0 group-hover:opacity-100 transition-opacity" />
+                  
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-3 mb-3">
+                        <span className="text-[10px] tracking-widest uppercase font-bold text-muted-foreground bg-muted px-2 py-1 rounded">
+                          {meeting.timeLabel}
+                        </span>
+                        <div className={`rounded-md border px-2 py-1 text-[10px] uppercase font-bold tracking-widest ${scoreColors[meeting.score.color]}`}>
+                          Score: {meeting.score.overall}
+                        </div>
+                      </div>
+                      <h3 className="text-xl font-bold text-foreground truncate group-hover:text-primary transition-colors tracking-tight">
+                        {meeting.aiTitle}
+                      </h3>
+                      <p className="mt-2 text-sm font-medium text-muted-foreground leading-relaxed line-clamp-2 pr-4">
+                        {meeting.summaryParagraph}
+                      </p>
                     </div>
-                    <div className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">
-                      {meeting.aiTitle}
-                    </div>
-                    <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600">
-                      {meeting.summaryParagraph}
-                    </p>
                   </div>
-                  <div className={`rounded-full border px-3 py-1 text-xs font-semibold ${scorePill[meeting.score.color]}`}>
-                    Score {meeting.score.overall}
-                  </div>
-                </div>
 
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <span className="momentum-pill">{meeting.tasks.length} tasks</span>
-                  <span className="momentum-pill">{meeting.participants.length} people</span>
-                  <span className="momentum-pill">
-                    {meeting.audioUrl ? 'Recording available' : 'Transcript only'}
-                  </span>
-                </div>
-              </Link>
+                  <div className="mt-5 flex flex-wrap gap-2">
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-xs font-semibold text-secondary-foreground shadow-sm">
+                      <Columns3 className="w-3.5 h-3.5 opacity-70" /> {meeting.tasks.length} Tasks
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-xs font-semibold text-secondary-foreground shadow-sm">
+                      <Users className="w-3.5 h-3.5 opacity-70" /> {meeting.participants.length} People
+                    </span>
+                  </div>
+                </Link>
+              </motion.div>
             ))}
 
-            {recentMeetings.length === 0 && !loading ? (
-              <div className="rounded-[24px] border border-dashed border-slate-200 bg-slate-50 px-5 py-10 text-center text-sm text-slate-500">
-                The workspace is waiting for its first recording.
+            {recentMeetings.length === 0 && !loading && (
+              <div className="p-12 text-center glass-panel border-dashed border-border flex flex-col items-center justify-center">
+                <div className="w-16 h-16 rounded-full bg-secondary flex items-center justify-center mb-4">
+                  <AudioLines className="w-8 h-8 text-muted-foreground" />
+                </div>
+                <h3 className="text-lg font-bold text-foreground">No Meetings Yet</h3>
+                <p className="text-muted-foreground font-medium text-sm mt-1">Upload an audio recording to see it here.</p>
               </div>
-            ) : null}
+            )}
           </div>
-        </div>
+        </motion.div>
 
-        <div className="space-y-6">
-          <div className="momentum-card p-6">
-            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
-              <Users className="h-4 w-4 text-teal-700" />
-              People pool
+        {/* Right Column: Execution Debt & Identities */}
+        <motion.div variants={staggerContainer} className="space-y-6">
+          {/* Action Required */}
+          <motion.div variants={fadeUp} className="glass-panel p-6 border-amber-500/20 bg-amber-50 dark:bg-amber-500/[0.02]">
+            <div className="flex items-center gap-4 mb-6">
+              <div className="p-3 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-500 flex items-center justify-center shadow-sm">
+                <Target className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-foreground tracking-tight">Needs Review</h3>
+                <p className="text-[10px] font-bold text-amber-600/70 dark:text-amber-500/70 uppercase tracking-widest mt-1">Check these tasks</p>
+              </div>
             </div>
-            <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">
-              Who Momentum recognizes
-            </h2>
 
-            <div className="mt-5 space-y-3">
+            <div className="space-y-3">
+              {reviewQueue.map((task) => (
+                <div key={task.id} className="p-4 rounded-2xl bg-background/50 border border-border/50 hover:bg-background transition-colors shadow-sm">
+                  <div className="font-bold text-foreground text-sm truncate">{task.title}</div>
+                  <div className="text-[11px] font-medium text-muted-foreground mt-1 truncate">{task.sourceMeeting}</div>
+                </div>
+              ))}
+
+              {reviewQueue.length === 0 && (
+                <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 font-semibold text-sm text-center">
+                  All tasks look clean. No immediate review needed.
+                </div>
+              )}
+            </div>
+            
+            <div className="mt-6 pt-5 border-t border-border/50 flex justify-between gap-4">
+              <div className="flex-1">
+                <div className="text-[10px] font-bold uppercase text-muted-foreground mb-1 tracking-widest">Unassigned Tasks</div>
+                <div className="text-3xl font-extrabold text-foreground">{analytics.unassignedTasks}</div>
+              </div>
+              <div className="flex-1">
+                <div className="text-[10px] font-bold uppercase text-muted-foreground mb-1 tracking-widest">Time Lapsed</div>
+                <div className="text-3xl font-extrabold text-foreground">{analytics.missingDeadlines}</div>
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Identity Pool */}
+          <motion.div variants={fadeUp} className="glass-panel p-6">
+            <div className="flex justify-between items-center mb-6">
+               <div className="flex items-center gap-4">
+                <div className="p-3 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shadow-sm">
+                  <Users className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-foreground tracking-tight">People Overview</h3>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-1">Active Members</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
               {activePeople.map((person) => (
-                <div key={person.id} className="momentum-card-soft px-4 py-4">
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <div className="text-sm font-semibold text-slate-900">{person.displayName}</div>
-                      <div className="mt-1 text-xs text-slate-500">
-                        {person.isWorkspaceMember ? person.email || 'Workspace member' : 'Meeting participant'}
-                      </div>
+                <div key={person.id} className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-2xl bg-secondary/50 border border-transparent hover:border-border transition-colors">
+                  <div className="min-w-0">
+                    <div className="font-bold text-foreground text-sm truncate">{person.displayName}</div>
+                    <div className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground mt-1 truncate">
+                      {person.isWorkspaceMember ? person.email || 'Native' : 'External'}
                     </div>
-                    <div className="text-right text-xs text-slate-500">
-                      <div>{person.ownedTaskCount} tasks</div>
-                      <div className="mt-1">{person.meetingCount} meetings</div>
-                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <span className="px-3 py-1 rounded-lg bg-background text-[11px] font-bold text-foreground shadow-sm">
+                      {person.ownedTaskCount} Tasks
+                    </span>
                   </div>
                 </div>
               ))}
 
-              {activePeople.length === 0 ? (
-                <div className="rounded-[22px] border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-                  People will appear here once recordings and owners start flowing into the workspace.
+              {activePeople.length === 0 && (
+                <div className="text-center p-6 text-sm font-medium text-muted-foreground bg-secondary/50 rounded-2xl border border-dashed border-border">
+                  No people found in meetings yet.
                 </div>
-              ) : null}
+              )}
             </div>
-          </div>
+          </motion.div>
+        </motion.div>
 
-          <div className="momentum-card p-6">
-            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
-              <AudioLines className="h-4 w-4 text-amber-700" />
-              Review queue
-            </div>
-            <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">
-              Needs human confirmation
-            </h2>
-
-            <div className="mt-5 space-y-3">
-              {reviewQueue.map((task) => (
-                <div key={task.id} className="rounded-[22px] border border-amber-200 bg-amber-50 px-4 py-4">
-                  <div className="text-sm font-semibold text-slate-900">{task.title}</div>
-                  <div className="mt-1 text-xs text-slate-600">{task.sourceMeeting}</div>
-                </div>
-              ))}
-
-              {reviewQueue.length === 0 ? (
-                <div className="rounded-[22px] border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-700">
-                  No review-critical tasks right now.
-                </div>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      </section>
-    </div>
+      </div>
+    </motion.div>
   );
 }

@@ -1,19 +1,25 @@
 import { useDeferredValue, useMemo, useState } from 'react';
-import { ArrowRight, AudioLines, Search, Users, Waves } from 'lucide-react';
+import { ArrowRight, AudioLines, Search, Users, Activity, Filter, Lock } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useWorkspace } from '../components/workspace/useWorkspace';
 
-const filterOptions = ['All', 'Ready to review', 'Needs attention', 'Recording attached'];
+const filterOptions = ['All Meetings', 'Process Next', 'Risks Found', 'Has Audio'];
 const scorePill = {
-  emerald: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  amber: 'bg-amber-50 text-amber-700 border-amber-200',
-  rose: 'bg-rose-50 text-rose-700 border-rose-200',
+  emerald: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
+  amber: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
+  rose: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20',
+};
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 20 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] } }
 };
 
 export default function Meetings() {
   const { snapshot } = useWorkspace();
   const [query, setQuery] = useState('');
-  const [activeFilter, setActiveFilter] = useState('All');
+  const [activeFilter, setActiveFilter] = useState('All Variants');
   const deferredQuery = useDeferredValue(query);
 
   const summary = useMemo(() => {
@@ -46,165 +52,186 @@ export default function Meetings() {
           .toLowerCase()
           .includes(normalizedQuery);
 
-      if (!matchesQuery) {
-        return false;
-      }
+      if (!matchesQuery) return false;
 
-      if (activeFilter === 'Ready to review') {
-        return meeting.processingStatus === 'ready';
-      }
-
-      if (activeFilter === 'Needs attention') {
-        return (meeting.meetingRisks?.length || 0) > 0 || Number(meeting.score?.overall || 0) < 75;
-      }
-
-      if (activeFilter === 'Recording attached') {
-        return Boolean(meeting.audioUrl);
-      }
+      if (activeFilter === 'Process Next') return meeting.processingStatus === 'ready';
+      if (activeFilter === 'Risks Found') return (meeting.meetingRisks?.length || 0) > 0 || Number(meeting.score?.overall || 0) < 75;
+      if (activeFilter === 'Has Audio') return Boolean(meeting.audioUrl);
 
       return true;
     });
   }, [activeFilter, deferredQuery, snapshot.meetings]);
 
   return (
-    <div className="space-y-6">
-      <section className="momentum-card momentum-spotlight p-6">
-        <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-          <div className="max-w-3xl">
-            <div className="momentum-pill-accent">
-              <Waves className="h-4 w-4" />
-              Meeting library
+    <motion.div 
+      initial="hidden"
+      animate="visible"
+      variants={{ visible: { transition: { staggerChildren: 0.05 } } }}
+      className="p-6 md:p-8 xl:p-12 max-w-[1600px] mx-auto space-y-8"
+    >
+      <motion.section variants={fadeUp} className="glass-panel p-8 md:p-10 relative overflow-hidden">
+        <div className="absolute top-0 right-0 p-12 opacity-[0.03] dark:opacity-5 pointer-events-none text-foreground">
+          <Lock className="w-64 h-64" />
+        </div>
+        
+        <div className="relative z-10 flex flex-col xl:flex-row xl:items-end justify-between gap-8 mb-10">
+          <div className="max-w-2xl">
+            <div className="inline-flex items-center gap-2 px-3 py-1 mb-4 rounded-full bg-primary/10 border border-primary/20 text-[10px] uppercase font-bold text-primary tracking-widest shadow-sm">
+              <Activity className="w-3 h-3" />
+              Meeting Library
             </div>
-            <h1 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
-              Browse by evidence quality, not by raw dump.
+            <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-foreground mb-4">
+              Your securely stored meetings and strategic decisions.
             </h1>
-            <p className="mt-4 text-base leading-8 text-slate-600">
-              Every card is trying to answer the same question: can you trust the recording enough to act on what Momentum extracted?
+            <p className="text-muted-foreground text-lg leading-relaxed font-medium">
+              Find past recordings quickly with transcripts and extracted action items.
             </p>
           </div>
 
-          <div className="momentum-input-shell w-full max-w-md">
-            <Search className="h-4 w-4 text-slate-400" />
+          <div className="w-full max-w-md relative group">
+            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+              <Search className="h-5 w-5 text-muted-foreground group-focus-within:text-primary transition-colors" />
+            </div>
             <input
               type="text"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search meetings, people, or transcript evidence"
+              placeholder="Search meetings, people, or transcripts..."
+              className="w-full bg-card border border-border rounded-2xl py-4 pl-12 pr-4 text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all shadow-sm font-medium"
             />
           </div>
         </div>
 
-        <div className="mt-6 grid gap-3 md:grid-cols-4">
+        <div className="relative z-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {[
-            { label: 'Meetings visible', value: summary.total, meta: 'Current workspace scope' },
-            { label: 'Needs attention', value: summary.needsAttention, meta: 'Risk or score issue detected' },
-            { label: 'Recording attached', value: summary.withAudio, meta: 'Playback available' },
-            { label: 'Named-speaker transcript', value: summary.speakerAttributed, meta: 'True speaker attribution present' },
-          ].map((item) => (
-            <div key={item.label} className="momentum-card-soft p-4">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
-                {item.label}
-              </div>
-              <div className="momentum-number mt-3 text-3xl font-semibold text-slate-950">
-                {item.value}
-              </div>
-              <div className="mt-2 text-sm text-slate-500">{item.meta}</div>
+            { label: 'Total Meetings', value: summary.total, meta: 'Meetings captured' },
+            { label: 'Meetings to check', value: summary.needsAttention, meta: 'System noted anomalies' },
+            { label: 'Audio Recordings', value: summary.withAudio, meta: 'Files attached' },
+            { label: 'Recognized Voices', value: summary.speakerAttributed, meta: 'Named speakers recorded' },
+          ].map((item, idx) => (
+            <div key={idx} className="bg-secondary/50 border border-border rounded-2xl p-5 hover:bg-card transition-colors shadow-sm">
+              <div className="text-[10px] tracking-widest uppercase font-bold text-muted-foreground mb-3">{item.label}</div>
+              <div className="text-3xl font-extrabold text-foreground mb-1">{item.value}</div>
+              <div className="text-xs font-semibold text-muted-foreground/80">{item.meta}</div>
             </div>
           ))}
         </div>
+      </motion.section>
 
-        <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap gap-2">
+      {/* Constraints & Grid */}
+      <motion.section variants={fadeUp} className="space-y-6">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 glass-panel py-3 px-4">
+          <div className="flex items-center gap-2 w-full overflow-x-auto snap-x pb-2 sm:pb-0 scrollbar-hide">
+            <div className="flex shrink-0 items-center gap-2 pr-4 border-r border-border text-muted-foreground">
+              <Filter className="w-4 h-4" />
+              <span className="text-[10px] uppercase tracking-widest font-bold">Filter</span>
+            </div>
             {filterOptions.map((option) => (
               <button
                 key={option}
-                type="button"
                 onClick={() => setActiveFilter(option)}
-                className={
+                className={`shrink-0 snap-start px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest transition-all ${
                   activeFilter === option
-                    ? 'rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white'
-                    : 'rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900'
-                }
+                    ? 'bg-foreground text-background shadow-md'
+                    : 'bg-secondary text-muted-foreground hover:bg-card hover:text-foreground hover:shadow-sm'
+                }`}
               >
                 {option}
               </button>
             ))}
           </div>
-
-          <div className="text-sm text-slate-500">
-            Showing <span className="font-semibold text-slate-900">{meetings.length}</span> meeting{meetings.length === 1 ? '' : 's'}
+          <div className="shrink-0 text-xs text-muted-foreground uppercase tracking-widest font-bold pr-2">
+            Showing <span className="text-foreground">{meetings.length}</span> Meetings
           </div>
         </div>
-      </section>
 
-      <section className="grid gap-4 xl:grid-cols-2">
-        {meetings.map((meeting) => (
-          <Link
-            key={meeting.id}
-            to={`/dashboard/meetings/${meeting.id}`}
-            className="momentum-card block p-6 transition hover:-translate-y-0.5"
-          >
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="min-w-0">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
-                  {meeting.timeLabel}
-                </div>
-                <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">
-                  {meeting.aiTitle}
-                </h2>
-                <div className="mt-2 text-sm text-slate-500">{meeting.rawTitle}</div>
-              </div>
-              <div className={`rounded-full border px-3 py-1 text-xs font-semibold ${scorePill[meeting.score.color]}`}>
-                Score {meeting.score.overall}
-              </div>
-            </div>
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+          <AnimatePresence>
+            {meetings.map((meeting) => (
+              <motion.div
+                key={meeting.id}
+                layout
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                transition={{ duration: 0.4 }}
+              >
+                <Link
+                  to={`/dashboard/meetings/${meeting.id}`}
+                  className="block glass-panel p-6 h-full group hover:border-primary/20 transition-all duration-300 relative overflow-hidden"
+                >
+                  <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-brand-gradient opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-4">
+                    <div>
+                      <div className="text-[10px] tracking-widest uppercase font-bold text-muted-foreground mb-2 bg-muted inline-block px-2 py-1 rounded">
+                        {meeting.timeLabel}
+                      </div>
+                      <h2 className="text-2xl font-bold text-foreground group-hover:text-primary transition-colors tracking-tight">
+                        {meeting.aiTitle}
+                      </h2>
+                      <div className="text-xs font-semibold text-muted-foreground/80 mt-1 uppercase tracking-widest">{meeting.rawTitle}</div>
+                    </div>
+                    <div className={`shrink-0 rounded-md border px-3 py-1.5 text-[10px] uppercase tracking-widest font-bold ${scorePill[meeting.score.color]}`}>
+                      Score {meeting.score.overall}%
+                    </div>
+                  </div>
 
-            <p className="mt-5 text-sm leading-7 text-slate-600">{meeting.summaryParagraph}</p>
+                  <p className="text-muted-foreground leading-relaxed text-sm mb-6 line-clamp-3 font-medium">
+                    {meeting.summaryParagraph}
+                  </p>
 
-            <div className="mt-5 flex flex-wrap gap-2">
-              <span className="momentum-pill">{meeting.tasks.length} tasks</span>
-              <span className="momentum-pill">{meeting.decisions.length} decisions</span>
-              <span className="momentum-pill">{meeting.meetingRisks.length} risks</span>
-              <span className="inline-flex items-center gap-1 rounded-full bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-700">
-                <Users className="h-3.5 w-3.5" />
-                {meeting.participants.length || 0}
-              </span>
-              <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
-                <AudioLines className="h-3.5 w-3.5" />
-                {meeting.audioUrl ? 'Recording attached' : 'Transcript only'}
-              </span>
-              {meeting.processingStatus === 'pending-analysis' ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
-                  Analysis pending
-                </span>
-              ) : null}
-            </div>
+                  <div className="flex flex-wrap gap-2 mb-6">
+                    {[{
+                      label: `${meeting.tasks.length} Tasks`,
+                      color: 'bg-secondary text-secondary-foreground'
+                    }, {
+                      label: `${meeting.decisions.length} Decisions`,
+                      color: 'bg-secondary text-secondary-foreground'
+                    }, {
+                      label: `${meeting.meetingRisks.length} Risks`,
+                      color: 'bg-red-500/10 text-red-600 dark:text-red-400'
+                    }].map((pill, i) => (
+                      <span key={i} className={`px-2.5 py-1 text-xs font-bold rounded-lg border border-transparent shadow-sm ${pill.color}`}>
+                        {pill.label}
+                      </span>
+                    ))}
+                    
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold rounded-lg border border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-400 shadow-sm">
+                      <Users className="w-3.5 h-3.5" />
+                      {meeting.participants.length || 0} People
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold rounded-lg border border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400 shadow-sm">
+                      <AudioLines className="w-3.5 h-3.5" />
+                      {meeting.audioUrl ? 'Audio Recording' : 'Text Only'}
+                    </span>
+                  </div>
 
-            <div className="mt-4 rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
-              {meeting.transcriptAttribution === 'speaker-attributed'
-                ? 'Speaker-attributed transcript available.'
-                : 'Transcript is available, but speaker names are not reliable for this recording yet.'}
-            </div>
-
-            <div className="mt-6 flex items-center justify-between text-sm">
-              <div className="text-slate-500">{meeting.source}</div>
-              <div className="inline-flex items-center gap-2 font-semibold text-slate-900">
-                Open meeting
-                <ArrowRight className="h-4 w-4" />
-              </div>
-            </div>
-          </Link>
-        ))}
-      </section>
-
-      {meetings.length === 0 ? (
-        <div className="momentum-card p-8 text-center">
-          <h2 className="text-2xl font-semibold tracking-tight text-slate-950">Nothing matches this view</h2>
-          <p className="mt-3 text-sm leading-7 text-slate-600">
-            Try clearing the search or switching filters to widen the library.
-          </p>
+                  <div className="bg-secondary rounded-xl p-3 border border-border text-xs font-medium text-muted-foreground flex items-center justify-between mt-auto shadow-sm group-hover:bg-card transition-colors">
+                    <span>
+                      {meeting.transcriptAttribution === 'speaker-attributed'
+                        ? 'Speaker identities recognized automatically.'
+                        : 'Some speakers need your manual review.'}
+                    </span>
+                    <ArrowRight className="w-4 h-4 opacity-50 group-hover:opacity-100 group-hover:translate-x-1 group-hover:text-primary transition-all" />
+                  </div>
+                </Link>
+              </motion.div>
+            ))}
+          </AnimatePresence>
         </div>
-      ) : null}
-    </div>
+
+        {meetings.length === 0 && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass-panel text-center py-24 border-dashed">
+            <div className="w-16 h-16 rounded-full bg-secondary flex items-center justify-center mx-auto mb-4">
+               <Lock className="w-8 h-8 text-muted-foreground" />
+            </div>
+            <h3 className="text-xl font-bold text-foreground">No Meetings Found</h3>
+            <p className="text-muted-foreground text-sm font-medium mt-2 max-w-sm mx-auto">
+              Try changing your search to find more meetings.
+            </p>
+          </motion.div>
+        )}
+      </motion.section>
+    </motion.div>
   );
 }

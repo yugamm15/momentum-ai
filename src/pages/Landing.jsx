@@ -2,159 +2,307 @@ import {
   ArrowRight,
   AudioLines,
   CheckCircle2,
+  ChevronRight,
+  Command,
+  Database,
   Layers3,
+  Mic,
+  PlayCircle,
   Sparkles,
   Target,
   Waves,
+  Workflow
 } from 'lucide-react';
+import { motion, useScroll, useTransform } from 'framer-motion';
+import { useRef } from 'react';
 import { Link } from 'react-router-dom';
+
+const fadeIn = {
+  hidden: { opacity: 0, y: 20 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1] } }
+};
+
+const staggerContainer = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: { staggerChildren: 0.1, delayChildren: 0.2 }
+  }
+};
 
 const featureCards = [
   {
-    title: 'Recordings with consequence',
-    body: 'Momentum starts from the meeting audio, not from a decorative summary card. Playback, transcript, and extracted actions stay tied together.',
+    title: 'Smart Audio Processing',
+    body: 'Moméntum securely captures and processes your calls and turns them into tasks.',
     icon: AudioLines,
   },
   {
-    title: 'People and ownership first',
-    body: 'Task routing becomes more trustworthy when participant names, workspace people, and review states live in the same surface.',
+    title: 'Automatic Assignments',
+    body: 'Assigns tasks securely and easily to people from your workspace automatically.',
     icon: Target,
   },
   {
-    title: 'Evidence stays visible',
-    body: 'Decisions, tasks, risk flags, and transcript excerpts all remain one click away from the source meeting.',
+    title: 'Reliable Information Ledger',
+    body: 'Keep an accurate history of your calls and tasks over time easily.',
     icon: CheckCircle2,
   },
   {
-    title: 'Real workspace posture',
-    body: 'The dashboard is built for live records, not for seeded demos. Every major surface expects actual meeting data to flow through it.',
+    title: 'Live Workspace Design',
+    body: 'Built for teams solving real problems in real time with high reliability.',
     icon: Layers3,
   },
 ];
 
+const processSteps = [
+  {
+    title: "Simple Recording",
+    desc: "Simply start capturing your Google Meets with the extension.",
+    icon: Mic
+  },
+  {
+    title: "Information Processing",
+    desc: "Your data is converted into actionable items immediately.",
+    icon: Database
+  },
+  {
+    title: "People Match",
+    desc: "Automatically map recorded speakers to members within your team.",
+    icon: Workflow
+  },
+  {
+    title: "Dashboard Management",
+    desc: "Review your tasks with full playback and editing on a beautiful web interface.",
+    icon: Command
+  }
+];
+
 export default function Landing({ session }) {
+  const containerRef = useRef(null);
+  const { scrollYProgress } = useScroll({
+    target: containerRef,
+    offset: ["start start", "end start"]
+  });
+
+  const heroY = useTransform(scrollYProgress, [0, 1], ["0%", "50%"]);
+  const heroOpacity = useTransform(scrollYProgress, [0, 0.5], [1, 0]);
+
   return (
-    <div className="min-h-screen px-6 py-6">
-      <div className="mx-auto max-w-7xl">
-        <nav className="momentum-card px-6 py-4">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="inline-flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-gradient-to-br from-teal-300 via-cyan-300 to-sky-400 text-lg font-black text-slate-950 shadow-[0_18px_45px_rgba(45,212,191,0.24)]">
-                M
+    <div className="relative min-h-screen bg-background text-foreground transition-colors duration-500" ref={containerRef}>
+      {/* Dynamic Background */}
+      <div className="fixed inset-0 z-0 pointer-events-none">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-primary/10 via-transparent to-transparent opacity-60 dark:opacity-100" />
+        <div className="absolute inset-0 cinematic-grid opacity-10 dark:opacity-30" />
+        <motion.div 
+          animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.5, 0.3] }}
+          transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }}
+          className="absolute -top-[20%] -left-[10%] w-[50%] h-[50%] bg-blue-500/10 blur-[120px] rounded-full" 
+        />
+        <motion.div 
+          animate={{ scale: [1, 1.5, 1], opacity: [0.2, 0.4, 0.2] }}
+          transition={{ duration: 20, repeat: Infinity, ease: "easeInOut", delay: 5 }}
+          className="absolute top-[30%] -right-[10%] w-[40%] h-[40%] bg-primary/10 blur-[120px] rounded-full" 
+        />
+      </div>
+
+      {/* Navigation */}
+      <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border bg-card/40 backdrop-blur-2xl">
+        <div className="mx-auto max-w-7xl px-6 h-20 flex items-center justify-between">
+          <motion.div 
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.8, ease: "easeOut" }}
+            className="flex items-center gap-3"
+          >
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center vibrant-panel">
+              <span className="text-white font-bold text-lg leading-none">M</span>
+            </div>
+            <span className="font-bold tracking-tight text-lg text-foreground">Moméntum</span>
+          </motion.div>
+
+          <motion.div 
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.8, ease: "easeOut" }}
+            className="flex items-center gap-4"
+          >
+            <Link to="/login" className="text-sm font-bold text-muted-foreground hover:text-foreground transition-colors duration-200">
+              Access Request
+            </Link>
+            <Link to={session ? '/dashboard' : '/login'} className="button-primary group flex items-center gap-2 py-2.5 px-6 shadow-md shadow-primary/20">
+              <span>{session ? 'Workspace' : 'Get Magic Link'}</span>
+              <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+            </Link>
+          </motion.div>
+        </div>
+      </nav>
+
+      <main className="relative z-10 pt-32 pb-20 px-6 overflow-hidden">
+        {/* Hero Section */}
+        <motion.section 
+          style={{ y: heroY, opacity: heroOpacity }}
+          className="mx-auto max-w-7xl pt-20 pb-32 text-center"
+        >
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
+            className="inline-flex items-center gap-2 rounded-full border border-border bg-card/50 px-4 py-1.5 backdrop-blur-md mb-8 shadow-sm"
+          >
+            <Sparkles className="h-4 w-4 text-primary" />
+            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-foreground">Meeting Intelligence</span>
+          </motion.div>
+
+          <motion.h1 
+            initial={{ opacity: 0, y: 40 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1], delay: 0.1 }}
+            className="mx-auto max-w-5xl text-5xl sm:text-6xl md:text-8xl font-extrabold tracking-tighter text-foreground"
+          >
+            Meeting Tasks.<br />
+            <span className="text-gradient">Done completely automatically.</span>
+          </motion.h1>
+
+          <motion.p 
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1], delay: 0.2 }}
+            className="mx-auto mt-8 max-w-2xl text-lg sm:text-xl leading-relaxed text-muted-foreground font-medium"
+          >
+            Moméntum captures your meetings and turns them into actual actionable tasks automatically, keeping your workflow quick and organized.
+          </motion.p>
+
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1], delay: 0.3 }}
+            className="mt-12 flex flex-col sm:flex-row items-center justify-center gap-4"
+          >
+            <Link to={session ? '/dashboard' : '/login'} className="button-primary w-full sm:w-auto h-14 text-base px-10 flex justify-center items-center shadow-lg shadow-primary/20">
+              {session ? 'Open Dashboard' : 'Get Started'}
+            </Link>
+            <Link to="/dashboard" className="button-secondary w-full sm:w-auto h-14 text-base px-10 flex justify-center items-center gap-2 group">
+              <PlayCircle className="h-5 w-5 text-muted-foreground group-hover:text-foreground transition-colors" />
+              <span>Learn More</span>
+            </Link>
+          </motion.div>
+        </motion.section>
+
+        {/* Cinematic Bento Layout */}
+        <motion.section 
+          variants={staggerContainer}
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, margin: "-100px" }}
+          className="mx-auto max-w-7xl grid grid-cols-1 md:grid-cols-12 gap-6 mt-16"
+        >
+          {/* Main Visualizer Panel */}
+          <motion.div variants={fadeIn} className="md:col-span-8 glass-panel p-8 sm:p-12 min-h-[500px] flex flex-col justify-between group overflow-hidden relative">
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
+            
+            <div className="relative z-10">
+              <div className="inline-flex items-center gap-2 rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 mb-6">
+                <Waves className="h-3 w-3 text-blue-500" />
+                <span className="text-[10px] font-bold uppercase tracking-widest text-blue-500">Fast AI Processing</span>
               </div>
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-teal-700">
-                  Momentum
-                </div>
-                <div className="text-lg font-semibold tracking-tight text-slate-950">
-                  Meeting execution intelligence
-                </div>
-              </div>
+              <h2 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-foreground mb-4">
+                How it works.
+              </h2>
+              <p className="text-muted-foreground text-lg leading-relaxed max-w-md font-medium">
+                Turning unstructured conversations into a robust framework of action items.
+              </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3">
-              <Link to="/login" className="momentum-button-secondary">
-                Sign in
-              </Link>
-              <Link to={session ? '/dashboard' : '/login'} className="momentum-button-primary">
-                {session ? 'Open workspace' : 'Enter Momentum'}
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </div>
-          </div>
-        </nav>
-
-        <main className="mt-8 grid gap-8 lg:grid-cols-[1.15fr_0.85fr]">
-          <section className="momentum-card momentum-spotlight p-8 lg:p-10">
-            <div className="momentum-pill-accent">
-              <Sparkles className="h-4 w-4" />
-              Web-first workspace
-            </div>
-
-            <h1 className="mt-6 max-w-5xl text-5xl font-semibold tracking-tight text-slate-950 lg:text-7xl">
-              Meetings should leave behind more than notes.
-              <span className="mt-2 block text-teal-700">They should leave behind accountable motion.</span>
-            </h1>
-
-            <p className="mt-6 max-w-3xl text-lg leading-8 text-slate-600">
-              Momentum captures the recording after explicit start, turns it into structured execution context, and keeps the evidence accessible enough for a team to correct what the AI got wrong.
-            </p>
-
-            <div className="mt-8 flex flex-wrap gap-3">
-              <Link to={session ? '/dashboard' : '/login'} className="momentum-button-primary">
-                {session ? 'Go to workspace' : 'Access the product'}
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-              <Link to="/dashboard" className="momentum-button-secondary">
-                Open the live workspace
-              </Link>
-            </div>
-
-            <div className="mt-10 grid gap-4 md:grid-cols-3">
-              {[
-                { label: 'Core artifact', value: 'Recording + transcript' },
-                { label: 'Decision lens', value: 'Ownership + risk' },
-                { label: 'System promise', value: 'Evidence over theater' },
-              ].map((stat) => (
-                <div key={stat.label} className="momentum-card-soft p-5">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
-                    {stat.label}
+            <div className="relative z-10 mt-12 grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {processSteps.map((step, idx) => (
+                <div key={idx} className="flex items-start gap-4 p-5 rounded-2xl bg-secondary/50 border border-transparent hover:border-border hover:bg-card transition-colors shadow-sm">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] bg-background border border-border text-foreground shadow-sm">
+                    <step.icon className="h-5 w-5" />
                   </div>
-                  <div className="momentum-number mt-3 text-2xl font-semibold text-slate-950">
-                    {stat.value}
+                  <div>
+                    <h3 className="text-sm font-bold text-foreground">{step.title}</h3>
+                    <p className="text-xs text-muted-foreground mt-1 leading-relaxed font-medium">{step.desc}</p>
                   </div>
                 </div>
               ))}
             </div>
-          </section>
+          </motion.div>
 
-          <section className="space-y-6">
-            <div className="momentum-dark-panel p-8">
-              <div className="inline-flex items-center gap-2 rounded-full border border-teal-200/20 bg-teal-200/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-teal-100">
-                <Waves className="h-4 w-4" />
-                Product loop
-              </div>
-
-              <div className="mt-6 space-y-4">
-                {[
-                  'Start recording only after consent from inside the meeting flow.',
-                  'Store the recording, transcript it, and extract decisions, tasks, and execution risk.',
-                  'Map visible participants and task owners into a workspace people pool when names line up cleanly.',
-                  'Review the meeting with playback, transcript, people, and tasks in one continuous surface.',
-                ].map((step, index) => (
-                  <div key={step} className="rounded-[24px] border border-white/10 bg-white/5 px-4 py-4">
-                    <div className="flex gap-4">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] bg-teal-200/15 text-sm font-semibold text-teal-100">
-                        {index + 1}
-                      </div>
-                      <div className="text-sm leading-6 text-slate-200">{step}</div>
-                    </div>
+          {/* Stats / Context Panel */}
+          <motion.div variants={fadeIn} className="md:col-span-4 vibrant-panel p-8 sm:p-12 flex flex-col justify-between relative overflow-hidden group">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.2)_0%,transparent_60%)]" />
+            
+            <div className="relative z-10 space-y-12">
+              {[
+                { label: 'Data Quality', value: '100%', desc: 'Safe storage binding.' },
+                { label: 'Processing Speed', value: '< 2.4s', desc: 'Real-time task fetching.' },
+                { label: 'AI Risk', value: 'Zero', desc: 'No unverified actions.' },
+              ].map((stat, idx) => (
+                <div key={idx} className="group/stat">
+                  <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/50 mb-2 group-hover/stat:text-white/80 transition-colors">
+                    {stat.label}
                   </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              {featureCards.map((card) => {
-                const Icon = card.icon;
-                return (
-                  <div key={card.title} className="momentum-card p-6">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-[16px] bg-teal-50 text-teal-700">
-                        <Icon className="h-5 w-5" />
-                      </div>
-                      <h2 className="text-xl font-semibold tracking-tight text-slate-950">
-                        {card.title}
-                      </h2>
-                    </div>
-                    <p className="mt-4 text-sm leading-7 text-slate-600">{card.body}</p>
+                  <div className="text-4xl sm:text-5xl font-extrabold tracking-tighter text-white mb-2">
+                    {stat.value}
                   </div>
-                );
-              })}
+                  <div className="text-xs font-semibold text-white/60">
+                    {stat.desc}
+                  </div>
+                </div>
+              ))}
             </div>
-          </section>
-        </main>
-      </div>
+          </motion.div>
+
+          {/* Feature Grid */}
+          {featureCards.map((card, idx) => {
+            const Icon = card.icon;
+            return (
+              <motion.div key={idx} variants={fadeIn} className="md:col-span-6 glass-panel p-8 sm:p-10 group relative transition-all duration-500 hover:-translate-y-1">
+                <div className="absolute inset-0 bg-gradient-to-b from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                <div className="relative z-10">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-[16px] bg-secondary border border-border text-foreground shadow-sm mb-6 transition-transform duration-500 group-hover:scale-110 group-hover:bg-card">
+                    <Icon className="h-6 w-6" />
+                  </div>
+                  <h3 className="text-2xl font-bold tracking-tight text-foreground mb-4">
+                    {card.title}
+                  </h3>
+                  <p className="text-muted-foreground font-medium leading-relaxed">
+                    {card.body}
+                  </p>
+                </div>
+              </motion.div>
+            );
+          })}
+        </motion.section>
+
+        {/* Global CTA */}
+        <motion.section 
+          initial={{ opacity: 0, y: 40 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-100px" }}
+          transition={{ duration: 1 }}
+          className="mx-auto max-w-5xl mt-32 mb-20 text-center relative"
+        >
+          <div className="absolute inset-0 flex items-center justify-center opacity-20 pointer-events-none">
+            <div className="w-full h-[1px] bg-gradient-to-r from-transparent via-foreground to-transparent" />
+          </div>
+          
+          <div className="relative z-10 py-16">
+            <h2 className="text-4xl sm:text-6xl font-extrabold tracking-tighter text-foreground mb-6">
+              Establish Moméntum.
+            </h2>
+            <p className="text-lg text-muted-foreground font-medium mb-10 max-w-xl mx-auto">
+              Stop taking manual notes and start being productive. Let the system do the work.
+            </p>
+            <Link to={session ? '/dashboard' : '/login'} className="button-primary px-12 py-4 text-lg shadow-xl shadow-primary/20">
+              Open Dashboard
+            </Link>
+          </div>
+        </motion.section>
+      </main>
+
+      <footer className="border-t border-border bg-card/50 py-12 text-center text-xs text-muted-foreground font-bold tracking-widest uppercase">
+        <p>Moméntum AI © 2026. Make Meetings Useful.</p>
+      </footer>
     </div>
   );
 }

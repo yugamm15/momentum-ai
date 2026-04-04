@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Sora:wght@500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,199 +6,156 @@
 
 @layer base {
   :root {
-    --background: 40 26% 95%;
-    --foreground: 218 38% 12%;
-    --card: 40 38% 98%;
-    --card-foreground: 218 38% 12%;
-    --popover: 40 38% 98%;
-    --popover-foreground: 218 38% 12%;
-    --primary: 218 38% 12%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 38 32% 92%;
-    --secondary-foreground: 218 38% 12%;
-    --muted: 40 22% 93%;
-    --muted-foreground: 215 15% 43%;
-    --accent: 173 67% 34%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 73% 52%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 34 18% 84%;
-    --input: 34 18% 84%;
-    --ring: 173 67% 34%;
+    --background: 0 0% 98%;
+    --foreground: 240 10% 4%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 4%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 4%;
+    --primary: 340 82% 52%; /* Vibrant Watermelon Pink/Red */
+    --primary-foreground: 0 0% 98%;
+    --secondary: 240 5% 96%;
+    --secondary-foreground: 240 6% 10%;
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 4% 46%;
+    --accent: 340 82% 52%;
+    --accent-foreground: 240 6% 10%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 6% 90%;
+    --input: 240 6% 90%;
+    --ring: 340 82% 52%;
     --radius: 1rem;
+    
+    /* Vibrant gradients for light mode */
+    --brand-gradient: linear-gradient(135deg, #ff4b72 0%, #ff7eb3 100%);
+    --surface-gradient: linear-gradient(180deg, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.4) 100%);
   }
 
+  .dark {
+    --background: 240 10% 4%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 6%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 6%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 340 82% 52%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 240 5% 12%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 5% 12%;
+    --muted-foreground: 240 5% 65%;
+    --accent: 340 82% 52%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 5% 16%;
+    --input: 240 5% 16%;
+    --ring: 340 82% 52%;
+
+    /* Vibrant gradients for dark mode */
+    --brand-gradient: linear-gradient(135deg, #ff4b72 0%, #ff2a5f 100%);
+    --surface-gradient: linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.01) 100%);
+  }
+}
+
+@layer base {
   * {
     @apply border-border;
   }
-
+  
   html {
     scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
-
+  
   body {
-    @apply bg-background text-foreground antialiased;
-    position: relative;
-    min-height: 100vh;
-    font-family: 'Instrument Sans', 'Segoe UI', system-ui, sans-serif;
-    background:
-      radial-gradient(circle at top left, rgba(45, 212, 191, 0.12), transparent 22%),
-      radial-gradient(circle at 85% 14%, rgba(251, 146, 60, 0.11), transparent 22%),
-      linear-gradient(180deg, #faf6ee 0%, #f2ede5 52%, #ece7de 100%);
-  }
-
-  body::before,
-  body::after {
-    content: '';
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    z-index: -1;
-  }
-
-  body::before {
-    background:
-      radial-gradient(circle at 18% 20%, rgba(20, 184, 166, 0.16), transparent 20%),
-      radial-gradient(circle at 78% 16%, rgba(249, 115, 22, 0.12), transparent 18%),
-      radial-gradient(circle at 50% 78%, rgba(14, 165, 233, 0.08), transparent 22%);
-    filter: blur(14px);
-  }
-
-  body::after {
-    background-image:
-      linear-gradient(rgba(15, 23, 42, 0.035) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(15, 23, 42, 0.035) 1px, transparent 1px);
-    background-size: 104px 104px;
-    mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.55), transparent 88%);
-    opacity: 0.42;
-  }
-
-  h1,
-  h2,
-  h3,
-  h4 {
-    font-family: 'Sora', 'Instrument Sans', system-ui, sans-serif;
+    @apply bg-background text-foreground font-sans transition-colors duration-500 relative;
   }
 
   ::selection {
-    background: rgba(20, 184, 166, 0.22);
-    color: rgb(15, 23, 42);
-  }
-
-  audio {
-    accent-color: rgb(15, 118, 110);
+    @apply bg-primary/20 text-primary;
   }
 }
 
 @layer components {
-  .momentum-card {
-    @apply relative overflow-hidden rounded-[30px] border border-white/75 bg-[rgba(255,252,248,0.88)] shadow-[0_26px_80px_rgba(15,23,42,0.08)] backdrop-blur-xl;
+  /* Premium Glass Effect */
+  .glass-panel {
+    @apply relative overflow-hidden rounded-3xl border shadow-xl backdrop-blur-2xl transition-all duration-300;
+    background: var(--surface-gradient);
+    border-color: theme('colors.border');
+  }
+  .dark .glass-panel {
+    @apply shadow-2xl;
+  }
+  .glass-panel:hover {
+    @apply shadow-2xl scale-[1.01];
   }
 
-  .momentum-card::before {
+  /* Vibrant Accent Panels (for high emphasis) */
+  .vibrant-panel {
+    @apply relative overflow-hidden rounded-3xl border-transparent text-white shadow-2xl transition-transform hover:scale-[1.02];
+    background: var(--brand-gradient);
+  }
+
+  /* Animated Glowing Text */
+  .text-glow {
+    text-shadow: 0 0 40px rgba(255, 75, 114, 0.4);
+  }
+  
+  .text-gradient {
+    @apply bg-clip-text text-transparent;
+    background-image: var(--brand-gradient);
+  }
+
+  /* Core Buttons */
+  .button-primary {
+    @apply relative overflow-hidden rounded-full font-semibold text-white transition-all shadow-lg hover:shadow-xl active:scale-95 flex items-center justify-center gap-2;
+    background: var(--brand-gradient);
+    padding: 0.875rem 1.75rem;
+  }
+  .button-primary::after {
     content: '';
     position: absolute;
     inset: 0;
-    background:
-      linear-gradient(140deg, rgba(255, 255, 255, 0.78), transparent 42%),
-      radial-gradient(circle at top right, rgba(45, 212, 191, 0.06), transparent 26%);
-    pointer-events: none;
+    background: linear-gradient(to bottom, rgba(255,255,255,0.2), transparent);
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .button-primary:hover::after {
+    opacity: 1;
+  }
+  
+  .button-secondary {
+    @apply relative overflow-hidden rounded-full border border-border bg-card text-foreground font-medium transition-all hover:bg-secondary active:scale-95 flex items-center justify-center gap-2 shadow-sm;
+    padding: 0.875rem 1.75rem;
   }
 
-  .momentum-card-soft {
-    @apply relative overflow-hidden rounded-[26px] border border-white/70 bg-[rgba(250,247,242,0.82)] shadow-[0_16px_40px_rgba(15,23,42,0.05)] backdrop-blur;
-  }
-
-  .momentum-card-soft::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(150deg, rgba(255, 255, 255, 0.55), transparent 46%);
-    pointer-events: none;
-  }
-
-  .momentum-dark-panel {
-    @apply relative overflow-hidden rounded-[32px] border border-slate-900/10 bg-[#0d1825] text-white shadow-[0_34px_100px_rgba(5,10,18,0.26)];
-  }
-
-  .momentum-dark-panel::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background:
-      radial-gradient(circle at top left, rgba(45, 212, 191, 0.18), transparent 28%),
-      radial-gradient(circle at bottom right, rgba(251, 146, 60, 0.12), transparent 24%),
-      linear-gradient(145deg, rgba(255, 255, 255, 0.08), transparent 46%);
-    pointer-events: none;
-  }
-
-  .momentum-pill {
-    @apply inline-flex items-center gap-2 rounded-full border border-slate-200/85 bg-white/85 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-600;
-  }
-
-  .momentum-pill-accent {
-    @apply inline-flex items-center gap-2 rounded-full border border-teal-200/80 bg-teal-50/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-teal-700;
-  }
-
-  .momentum-button-primary {
-    @apply inline-flex items-center justify-center gap-2 rounded-[18px] bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition duration-200 hover:-translate-y-0.5 hover:bg-slate-900;
-    box-shadow: 0 18px 36px rgba(15, 23, 42, 0.16);
-  }
-
-  .momentum-button-secondary {
-    @apply inline-flex items-center justify-center gap-2 rounded-[18px] border border-slate-200 bg-white/90 px-5 py-3 text-sm font-semibold text-slate-700 transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white;
-  }
-
-  .momentum-input-shell {
-    @apply flex items-center gap-3 rounded-[22px] border border-slate-200/80 bg-white/90 px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)] transition focus-within:border-teal-300 focus-within:ring-4 focus-within:ring-teal-100;
-  }
-
-  .momentum-input-shell input,
-  .momentum-input-shell textarea,
-  .momentum-input-shell select {
-    @apply w-full border-0 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400;
-  }
-
-  .momentum-input-shell textarea {
-    resize: vertical;
-  }
-
-  .momentum-spotlight {
-    position: relative;
-    overflow: hidden;
-  }
-
-  .momentum-spotlight::after {
-    content: '';
-    position: absolute;
-    inset: auto -18% -54% auto;
-    width: 260px;
-    height: 260px;
-    border-radius: 999px;
-    background: radial-gradient(circle, rgba(20, 184, 166, 0.12), transparent 68%);
-    pointer-events: none;
-    animation: drift 12s ease-in-out infinite;
-  }
-
-  .momentum-number {
-    font-family: 'Sora', 'Instrument Sans', system-ui, sans-serif;
-    letter-spacing: -0.06em;
-  }
-
-  .momentum-section-title {
-    @apply text-3xl font-semibold tracking-tight text-slate-950;
-  }
-
-  .momentum-copy {
-    @apply text-sm leading-7 text-slate-600;
+  /* Cinematic Section Transitions */
+  .cinematic-grid {
+    background-size: 50px 50px;
+    background-image: 
+      linear-gradient(to right, theme('colors.foreground' / 3%) 1px, transparent 1px),
+      linear-gradient(to bottom, theme('colors.foreground' / 3%) 1px, transparent 1px);
+    mask-image: linear-gradient(to bottom, transparent, black 10%, black 90%, transparent);
   }
 }
 
-@keyframes drift {
-  0%, 100% {
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-  50% {
-    transform: translate3d(10px, 14px, 0) scale(1.05);
-  }
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent; 
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-foreground/10 rounded-full border-2 border-transparent bg-clip-padding;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-foreground/20;
 }
