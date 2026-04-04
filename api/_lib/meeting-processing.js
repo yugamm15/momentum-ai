@@ -421,6 +421,11 @@ async function saveMeetingRecord(supabase, meeting, options = {}) {
         actionability: meeting.actionability,
         audio_url: meeting.audioUrl || existingMeeting.audio_url || options?.existingAudioUrl || null,
         status: 'completed',
+        ...(legacyTables.meetings !== 'meetings'
+          ? {
+              user_id: cleanLegacyMetadataField(sourceMetadata?.userId) || null,
+            }
+          : {}),
         ...((legacyTables.meetings === 'meetings' && (await supportsV2WorkspaceSchema(supabase)))
           ? {
               ai_title: meeting.title,
@@ -473,6 +478,11 @@ async function saveMeetingRecord(supabase, meeting, options = {}) {
         actionability: meeting.actionability,
         audio_url: meeting.audioUrl,
         status: 'completed',
+        ...(legacyTables.meetings !== 'meetings'
+          ? {
+              user_id: cleanLegacyMetadataField(sourceMetadata?.userId) || null,
+            }
+          : {}),
       })
       .eq('id', placeholder.id)
       .select()
@@ -499,6 +509,11 @@ async function saveMeetingRecord(supabase, meeting, options = {}) {
       actionability: meeting.actionability,
       audio_url: meeting.audioUrl,
       status: 'completed',
+      ...(legacyTables.meetings !== 'meetings'
+        ? {
+            user_id: cleanLegacyMetadataField(sourceMetadata?.userId) || null,
+          }
+        : {}),
     })
     .select()
     .single();

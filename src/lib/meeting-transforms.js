@@ -250,7 +250,7 @@ function shouldKeepLegacyTask(task, meeting) {
     return false;
   }
 
-  return false;
+  return true;
 }
 
 export function shouldKeepLegacyMeeting(meeting, legacyTasks = []) {
@@ -260,18 +260,19 @@ export function shouldKeepLegacyMeeting(meeting, legacyTasks = []) {
 
   const transcript = String(meeting?.transcript || '').trim();
   const title = String(meeting?.title || '').trim();
+  const audioUrl = String(meeting?.audio_url || meeting?.audio_storage_path || '').trim();
   const usableTasks = legacyTasks.filter((task) => shouldKeepLegacyTask(task, meeting));
   const wordCount = transcriptWordCount(transcript);
 
-  if (!transcript && usableTasks.length === 0) {
+  if (!transcript && usableTasks.length === 0 && !audioUrl) {
     return false;
   }
 
-  if (transcriptLooksLowSignal(transcript) && usableTasks.length === 0) {
+  if (transcriptLooksLowSignal(transcript) && usableTasks.length === 0 && !audioUrl) {
     return false;
   }
 
-  if (looksLikePlaceholderMeetingTitle(title) && wordCount < 8 && usableTasks.length === 0) {
+  if (looksLikePlaceholderMeetingTitle(title) && wordCount < 8 && usableTasks.length === 0 && !audioUrl) {
     return false;
   }
 

@@ -28,11 +28,17 @@ async function main() {
   }
 
   let migrated = 0;
+  let skipped = 0;
   for (const meeting of meetings || []) {
     const unifiedMeeting = transformLegacyMeeting(
       meeting,
       (tasks || []).filter((task) => task.meeting_id === meeting.id)
     );
+
+    if (!unifiedMeeting) {
+      skipped += 1;
+      continue;
+    }
 
     await persistMeetingContract(
       supabase,
@@ -45,6 +51,7 @@ async function main() {
     JSON.stringify(
       {
         migratedMeetings: migrated,
+        skippedMeetings: skipped,
         sourceTables: sources,
       },
       null,

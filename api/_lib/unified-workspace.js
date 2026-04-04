@@ -320,6 +320,7 @@ async function loadV2Snapshot(supabase, options = {}) {
     (membershipRows || []).map((member) => [member.profile_id, member])
   );
   const directory = createPersonDirectory(profileRows || [], membershipByProfileId);
+  const workspaceProfileIds = new Set((profileRows || []).map((profile) => profile.id).filter(Boolean));
   const participantsByMeeting = groupBy(participantRows || [], 'meeting_id');
   const tasksByMeeting = groupBy(taskRows || [], 'meeting_id');
   const decisionsByMeeting = groupBy(decisionRows || [], 'meeting_id');
@@ -451,6 +452,7 @@ async function loadV2Snapshot(supabase, options = {}) {
   const legacyTables = await getLegacyTableNames(supabase);
   const legacyMeetings = await loadLegacyRowsIfAvailable(supabase, legacyTables, meetingsRows || [], {
     workspaceId,
+    workspaceProfileIds,
   });
   const allMeetings = [...meetings, ...legacyMeetings];
   const allTasks = allMeetings.flatMap((meeting) => meeting.tasks);
@@ -487,6 +489,11 @@ async function loadLegacyRowsIfAvailable(supabase, legacyTables, v2Meetings, opt
       .filter(Boolean)
   );
   const workspaceId = String(options?.workspaceId || '').trim();
+  const workspaceProfileIds = new Set(
+    Array.from(options?.workspaceProfileIds || [])
+      .map((profileId) => String(profileId || '').trim())
+      .filter(Boolean)
+  );
 
   return (legacyMeetings || [])
     .filter((meeting) => !representedLegacyIds.has(meeting.id))
@@ -496,7 +503,13 @@ async function loadLegacyRowsIfAvailable(supabase, legacyTables, v2Meetings, opt
       }
 
       const summary = String(meeting.summary || '');
-      return summary.includes(`Workspace id: ${workspaceId}.`);
+      if (summary.includes(`Workspace id: ${workspaceId}.`)) {
+        return true;
+      }
+
+      const summaryMetadata = extractRawMeetingMetadata(meeting, []);
+      const userId = String(meeting.user_id || summaryMetadata.userId || '').trim();
+      return userId && workspaceProfileIds.has(userId);
     })
     .map((meeting) =>
       transformLegacyMeeting(

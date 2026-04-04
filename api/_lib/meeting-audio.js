@@ -260,6 +260,11 @@ function buildRawMeetingPayload({
     audio_url: audioUrl,
     status: buildRawUploadStatus(sessionId),
     ...(useUnifiedMeetingsTable
+      ? {}
+      : {
+          user_id: cleanNullable(userId) || null,
+        }),
+    ...(useUnifiedMeetingsTable
       ? {
           workspace_id: cleanNullable(workspaceId),
           created_by_profile_id: cleanNullable(userId),
