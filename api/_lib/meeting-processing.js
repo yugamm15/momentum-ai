@@ -857,13 +857,28 @@ function normalizeRiskFlags(riskFlags, tasks, transcript, ownerResolutionRisks =
 
 function buildFallbackTitle(sentences, sourceMetadata = {}, transcriptLooksLowSignal = false) {
   const sanitizedCode = sanitizeMeetingCode(sourceMetadata?.meetingCode);
+  const transcriptText = sentences.join(' ');
   if (transcriptLooksLowSignal) {
-    const narrative = inferLowSignalNarrative(sentences.join(' '));
+    const narrative = inferLowSignalNarrative(transcriptText);
     if (narrative?.title) {
       return narrative.title;
     }
 
     return sanitizedCode ? `Meeting ${sanitizedCode}` : 'Meeting';
+  }
+
+  const meetingLabel = sanitizeOptionalField(sourceMetadata?.meetingLabel);
+  if (meetingLabel && !/^meeting\s+review\s+for\s+/i.test(meetingLabel)) {
+    return meetingLabel;
+  }
+
+  const contextualTitle = buildContextualFallbackTitle({
+    transcript: transcriptText,
+    participantNames: sourceMetadata?.participantNames || [],
+    meetingCode: sanitizedCode,
+  });
+  if (contextualTitle) {
+    return contextualTitle;
   }
 
   const participantNames = dedupeNames(sourceMetadata?.participantNames || []);
@@ -873,11 +888,6 @@ function buildFallbackTitle(sentences, sourceMetadata = {}, transcriptLooksLowSi
 
   if (participantNames.length === 1) {
     return `Discussion with ${participantNames[0]}`;
-  }
-
-  const meetingLabel = sanitizeOptionalField(sourceMetadata?.meetingLabel);
-  if (meetingLabel && !/^meeting\s+review\s+for\s+/i.test(meetingLabel)) {
-    return meetingLabel;
   }
 
   if (sanitizedCode) {
@@ -893,6 +903,42 @@ function buildFallbackTitle(sentences, sourceMetadata = {}, transcriptLooksLowSi
     .join(' ');
 
   return title || 'Meeting Summary';
+}
+
+function buildContextualFallbackTitle({ transcript = '', participantNames = [], meetingCode = '' }) {
+  const topics = extractSummaryTopics(transcript, 2);
+  if (topics.length >= 2) {
+    return `${formatTopicForTitle(topics[0])} and ${formatTopicForTitle(topics[1])} Review`;
+  }
+
+  if (topics.length === 1) {
+    return `${formatTopicForTitle(topics[0])} Discussion`;
+  }
+
+  const names = dedupeNames(participantNames || []);
+  if (names.length > 1) {
+    return `Team Sync: ${names.slice(0, 2).join(' & ')}`;
+  }
+
+  if (names.length === 1) {
+    return `Discussion with ${names[0]}`;
+  }
+
+  if (meetingCode) {
+    return `Google Meet Check-in (${String(meetingCode).toUpperCase()})`;
+  }
+
+  return '';
+}
+
+function formatTopicForTitle(topic) {
+  return String(topic || '')
+    .trim()
+    .split(/\s+/)
+    .slice(0, 3)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ')
+    .trim();
 }
 
 function buildFallbackSummary(summarySentences, taskCount, transcriptLooksLowSignal, sourceMetadata = {}, transcript = '') {

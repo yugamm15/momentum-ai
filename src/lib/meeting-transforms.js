@@ -686,7 +686,15 @@ function pickFirstUsableLabel(...values) {
   return '';
 }
 
-function resolveLegacyMeetingTitle({ candidates = [], transcriptText, summaryParagraph, tasks = [], meetingCode = '' }) {
+function resolveLegacyMeetingTitle({
+  candidates = [],
+  transcriptText,
+  summaryParagraph,
+  tasks = [],
+  meetingCode = '',
+  participants = [],
+  meetingLabel = '',
+}) {
   const existing = pickFirstUsableLabel(...candidates);
   if (existing) {
     return existing;
@@ -699,12 +707,22 @@ function resolveLegacyMeetingTitle({ candidates = [], transcriptText, summaryPar
   });
 
   if (lowSignal) {
-    return buildLowSignalTitle(meetingCode);
+    return buildLowSignalTitle(meetingCode, transcriptText);
   }
 
   const taskTitle = toCompactTitle(tasks.map((task) => task.title).find(Boolean));
   if (taskTitle) {
     return taskTitle;
+  }
+
+  const contextualTitle = buildContextualTranscriptTitle({
+    transcriptText,
+    participants,
+    meetingCode,
+    meetingLabel,
+  });
+  if (contextualTitle) {
+    return contextualTitle;
   }
 
   const summaryTitle = toCompactTitle(summaryParagraph);
@@ -717,6 +735,51 @@ function resolveLegacyMeetingTitle({ candidates = [], transcriptText, summaryPar
   }
 
   return 'Meeting Summary';
+}
+
+function buildContextualTranscriptTitle({
+  transcriptText = '',
+  participants = [],
+  meetingCode = '',
+  meetingLabel = '',
+}) {
+  const topics = extractSummaryTopics(transcriptText, 2);
+  if (topics.length >= 2) {
+    return `${formatTopicForTitle(topics[0])} and ${formatTopicForTitle(topics[1])} Review`;
+  }
+
+  if (topics.length === 1) {
+    return `${formatTopicForTitle(topics[0])} Discussion`;
+  }
+
+  const reference = toCompactTitle(meetingLabel);
+  if (reference) {
+    return reference;
+  }
+
+  if (participants.length > 1) {
+    return `Team Sync: ${participants.slice(0, 2).join(' & ')}`;
+  }
+
+  if (participants.length > 0) {
+    return `Discussion with ${participants[0]}`;
+  }
+
+  if (meetingCode) {
+    return `Google Meet Check-in (${String(meetingCode).toUpperCase()})`;
+  }
+
+  return '';
+}
+
+function formatTopicForTitle(topic) {
+  return String(topic || '')
+    .trim()
+    .split(/\s+/)
+    .slice(0, 3)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ')
+    .trim();
 }
 
 function buildDisplaySummaryParagraph({
@@ -902,7 +965,40 @@ function normalizeMeetingCode(value) {
   return match ? match[0] : '';
 }
 
-function buildLowSignalTitle(meetingCode = '') {
+function inferLowSignalNarrative(transcriptText) {
+  const normalized = normalizeComparableText(transcriptText);
+  if (!normalized) {
+    return {
+      title: 'Unclear Meeting Snippet',
+    };
+  }
+
+  const soundCheckSignals = [
+    'sound check',
+    'can you hear',
+    'hear me',
+    'mic check',
+    'audio check',
+    'testing',
+    'test audio',
+  ];
+  if (soundCheckSignals.some((signal) => normalized.includes(signal))) {
+    return {
+      title: 'Meeting Start and Sound Check',
+    };
+  }
+
+  return {
+    title: 'Unclear Meeting Snippet',
+  };
+}
+
+function buildLowSignalTitle(meetingCode = '', transcriptText = '') {
+  const narrative = inferLowSignalNarrative(transcriptText);
+  if (narrative?.title) {
+    return narrative.title;
+  }
+
   const normalizedCode = normalizeMeetingCode(meetingCode);
   return normalizedCode ? `Meeting ${normalizedCode}` : 'Meeting';
 }
@@ -965,6 +1061,8 @@ export function transformLegacyMeeting(meeting, legacyTasks = []) {
     summaryParagraph: rawSummaryParagraph,
     tasks,
     meetingCode: metadata.meetingCode,
+    participants,
+    meetingLabel: metadata.meetingLabel,
   });
   const summaryParagraph = buildDisplaySummaryParagraph({
     summaryParagraph: rawSummaryParagraph,

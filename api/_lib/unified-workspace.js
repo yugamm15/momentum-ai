@@ -428,6 +428,7 @@ async function loadV2Snapshot(supabase, options = {}) {
       tasks,
       participants: participantNames,
       meetingCode: rawMetadata.meetingCode,
+      meetingLabel: rawMetadata.meetingLabel || meeting.source_meeting_label,
     });
     const rawTitle =
       pickFirstUsableLabel(
@@ -1473,6 +1474,7 @@ function resolveMeetingTitle({
   tasks = [],
   participants = [],
   meetingCode = '',
+  meetingLabel = '',
 }) {
   const existingTitle = pickFirstUsableLabel(...candidates);
   if (existingTitle) {
@@ -1503,6 +1505,16 @@ function resolveMeetingTitle({
     return taskTitle;
   }
 
+  const contextualTitle = buildContextualTranscriptTitle({
+    transcriptText,
+    participants,
+    meetingCode,
+    meetingLabel,
+  });
+  if (contextualTitle) {
+    return contextualTitle;
+  }
+
   const summaryTitle = toCompactTitle(summaryParagraph);
   if (summaryTitle) {
     return summaryTitle;
@@ -1521,6 +1533,51 @@ function resolveMeetingTitle({
   }
 
   return 'Meeting Summary';
+}
+
+function buildContextualTranscriptTitle({
+  transcriptText = '',
+  participants = [],
+  meetingCode = '',
+  meetingLabel = '',
+}) {
+  const topics = extractSummaryTopics(transcriptText, 2);
+  if (topics.length >= 2) {
+    return `${formatTopicForTitle(topics[0])} and ${formatTopicForTitle(topics[1])} Review`;
+  }
+
+  if (topics.length === 1) {
+    return `${formatTopicForTitle(topics[0])} Discussion`;
+  }
+
+  const reference = toCompactTitle(meetingLabel);
+  if (reference) {
+    return reference;
+  }
+
+  if (participants.length > 1) {
+    return `Team Sync: ${participants.slice(0, 2).join(' & ')}`;
+  }
+
+  if (participants.length > 0) {
+    return `Discussion with ${participants[0]}`;
+  }
+
+  if (meetingCode) {
+    return `Google Meet Check-in (${String(meetingCode).toUpperCase()})`;
+  }
+
+  return '';
+}
+
+function formatTopicForTitle(topic) {
+  return String(topic || '')
+    .trim()
+    .split(/\s+/)
+    .slice(0, 3)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ')
+    .trim();
 }
 
 function pickFirstUsableLabel(...values) {
