@@ -502,6 +502,11 @@ async function loadLegacyRowsIfAvailable(supabase, legacyTables, v2Meetings, opt
         return true;
       }
 
+      const status = String(meeting.status || '').trim().toLowerCase();
+      if (status.startsWith('raw-uploaded:') || status.startsWith('audio-uploaded:')) {
+        return true;
+      }
+
       const summary = String(meeting.summary || '');
       if (summary.includes(`Workspace id: ${workspaceId}.`)) {
         return true;
