@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Momentum AI</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #08111f;
+      --panel: rgba(9, 18, 34, 0.82);
+      --panel-soft: rgba(15, 23, 42, 0.72);
+      --border: rgba(148, 163, 184, 0.15);
+      --text: #f8fafc;
+      --muted: #9fb0c8;
+      --accent: #72c7ff;
+      --accent-strong: #38bdf8;
+      --success: #6ee7b7;
+      --warning: #fde68a;
+      --danger: #fca5a5;
+      --shadow: 0 30px 80px rgba(2, 6, 23, 0.42);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      width: 360px;
+      min-height: 520px;
+      margin: 0;
+      background:
+        radial-gradient(circle at top left, rgba(56, 189, 248, 0.22), transparent 34%),
+        radial-gradient(circle at bottom right, rgba(59, 130, 246, 0.18), transparent 30%),
+        linear-gradient(180deg, #071120 0%, #08111f 100%);
+      font-family: "Manrope", "Segoe UI", system-ui, sans-serif;
+      color: var(--text);
+      overflow: hidden;
+    }
+
+    .shell {
+      position: relative;
+      min-height: 520px;
+      padding: 18px;
+      overflow: hidden;
+    }
+
+    .orb {
+      position: absolute;
+      border-radius: 999px;
+      filter: blur(24px);
+      opacity: 0.45;
+      pointer-events: none;
+    }
+
+    .orb-one {
+      top: -42px;
+      right: -20px;
+      width: 120px;
+      height: 120px;
+      background: rgba(59, 130, 246, 0.42);
+      animation: drift 9s ease-in-out infinite;
+    }
+
+    .orb-two {
+      bottom: -30px;
+      left: -22px;
+      width: 140px;
+      height: 140px;
+      background: rgba(125, 211, 252, 0.22);
+      animation: drift 11s ease-in-out infinite reverse;
+    }
+
+    .panel {
+      position: relative;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 28px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+      overflow: hidden;
+    }
+
+    .panel::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), transparent 36%);
+      pointer-events: none;
+    }
+
+    .hero {
+      padding: 22px 22px 16px;
+    }
+
+    .brand-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-mark {
+      width: 48px;
+      height: 48px;
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, rgba(56, 189, 248, 0.9), rgba(59, 130, 246, 0.74));
+      box-shadow: 0 18px 40px rgba(56, 189, 248, 0.25);
+    }
+
+    .brand-mark svg {
+      width: 24px;
+      height: 24px;
+    }
+
+    .eyebrow {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: #c9efff;
+    }
+
+    .title {
+      margin-top: 2px;
+      font-size: 17px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .badge {
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: #cfe6ff;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    .hero-copy {
+      margin-top: 20px;
+      padding: 18px;
+      border-radius: 22px;
+      background: linear-gradient(180deg, rgba(7, 18, 36, 0.88), rgba(10, 20, 38, 0.62));
+      border: 1px solid rgba(148, 163, 184, 0.14);
+    }
+
+    .hero-copy h1 {
+      margin: 0;
+      font-family: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+      font-size: 28px;
+      line-height: 1.02;
+      letter-spacing: -0.05em;
+    }
+
+    .hero-copy p {
+      margin: 12px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.65;
+    }
+
+    .hero-notes {
+      margin-top: 14px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .hero-note {
+      border-radius: 18px;
+      padding: 12px 14px;
+      background: rgba(255, 255, 255, 0.04);
+      color: #d7e6f9;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .hero-note strong {
+      color: #ffffff;
+    }
+
+    .control {
+      margin-top: 14px;
+      padding: 18px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .control-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .control-title {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: #b7cae3;
+    }
+
+    .shortcut-pill {
+      border-radius: 999px;
+      padding: 7px 10px;
+      background: rgba(125, 211, 252, 0.1);
+      color: #d7efff;
+      border: 1px solid rgba(125, 211, 252, 0.16);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    button {
+      width: 100%;
+      appearance: none;
+      border: 0;
+      border-radius: 18px;
+      padding: 16px 18px;
+      background: linear-gradient(135deg, #8de0ff 0%, #59c6ff 42%, #4a8dff 100%);
+      color: #05101d;
+      font-size: 14px;
+      font-weight: 900;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: transform 180ms ease, box-shadow 180ms ease, filter 180ms ease;
+      box-shadow: 0 22px 44px rgba(56, 189, 248, 0.24);
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      filter: brightness(1.03);
+      box-shadow: 0 26px 50px rgba(56, 189, 248, 0.3);
+    }
+
+    button:disabled {
+      cursor: default;
+      opacity: 0.8;
+      transform: none;
+    }
+
+    .status {
+      border-radius: 20px;
+      background: var(--panel-soft);
+      border: 1px solid rgba(148, 163, 184, 0.12);
+      padding: 14px 14px 15px;
+    }
+
+    .status-line {
+      font-size: 13px;
+      font-weight: 800;
+      line-height: 1.4;
+      color: #dbeafe;
+    }
+
+    .status-detail {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .pipeline {
+      border-radius: 20px;
+      background: rgba(6, 16, 30, 0.72);
+      border: 1px solid rgba(148, 163, 184, 0.14);
+      padding: 14px;
+    }
+
+    .pipeline-label {
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+
+    .pipeline-body {
+      margin-top: 8px;
+      color: #d4e4f7;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .footer-tip {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.6;
+    }
+
+    @keyframes drift {
+      0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+      50% { transform: translate3d(8px, 12px, 0) scale(1.06); }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="orb orb-one"></div>
+    <div class="orb orb-two"></div>
+
+    <div class="panel hero">
+      <div class="brand-row">
+        <div class="brand">
+          <div class="brand-mark">
+            <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m3 11 18-5v12L3 14v-3z"></path>
+              <path d="M11.6 16.8 a3 3 0 1 1 -5.8 -0.8"></path>
+            </svg>
+          </div>
+          <div>
+            <div class="eyebrow">Momentum AI</div>
+            <div class="title">Meet Capture Console</div>
+          </div>
+        </div>
+        <div class="badge">v1.6</div>
+      </div>
+
+      <div class="hero-copy">
+        <h1>Capture the meeting while it still matters.</h1>
+        <p>Momentum records only after you start it, then keeps local recovery chunks safe while the workspace turns the conversation into execution.</p>
+        <div class="hero-notes">
+          <div class="hero-note"><strong>Fastest path:</strong> click the toolbar icon once on a live Meet tab. Momentum will try to start automatically when this panel opens.</div>
+          <div class="hero-note"><strong>Fallback:</strong> use <span id="shortcut-text">Alt+Shift+M</span> if you want a keyboard-first demo flow.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel control">
+      <div class="control-top">
+        <div class="control-title">Recorder control</div>
+        <div class="shortcut-pill">Google Meet only</div>
+      </div>
+
+      <button id="activate-btn">Activate Momentum</button>
+
+      <div class="status">
+        <div class="status-line" id="status-text">Standby mode</div>
+        <div class="status-detail" id="status-detail">Open a live Meet tab and Momentum will try to start immediately.</div>
+      </div>
+
+      <div class="pipeline">
+        <div class="pipeline-label">Pipeline state</div>
+        <div class="pipeline-body" id="pipeline-text">Recorder idle. Click the toolbar icon or use Alt+Shift+M to begin.</div>
+      </div>
+
+      <div class="footer-tip">
+        Momentum records this meeting only after you start it. If Chrome blocks capture, the popup stays open so you can retry without losing context.
+      </div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

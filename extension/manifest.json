@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "Momentum AI",
+  "version": "1.6",
+  "description": "Professional Silent Meeting Intelligence.",
+  "permissions": [
+    "activeTab",
+    "tabs",
+    "tabCapture",
+    "offscreen",
+    "alarms",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://meet.google.com/*",
+    "https://momentum-ai-meet.vercel.app/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": "logo.png"
+  },
+  "commands": {
+    "activate-momentum": {
+      "suggested_key": {
+        "default": "Alt+Shift+M"
+      },
+      "description": "Start Momentum on the active Google Meet tab"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://meet.google.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "128": "logo.png"
+  }
+}
