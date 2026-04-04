@@ -31,8 +31,8 @@ const ITEMS_PER_PAGE = 4;
 export default function Meetings() {
   const { snapshot } = useWorkspace();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [query, setQuery] = useState(() => String(searchParams.get('q') || '').trim());
-  const [activeFilter, setActiveFilter] = useState(() => sanitizeMeetingFilter(searchParams.get('filter')));
+  const query = String(searchParams.get('q') || '').trim();
+  const activeFilter = sanitizeMeetingFilter(searchParams.get('filter'));
   const [pageRequest, setPageRequest] = useState(1);
   const deferredQuery = useDeferredValue(query);
 
@@ -115,14 +115,12 @@ export default function Meetings() {
   }
 
   function handleQueryChange(nextValue) {
-    setQuery(nextValue);
     setPageRequest(1);
     syncView({ nextQuery: nextValue });
   }
 
   function handleFilterChange(nextFilter) {
     const normalizedFilter = sanitizeMeetingFilter(nextFilter);
-    setActiveFilter(normalizedFilter);
     setPageRequest(1);
     syncView({ nextFilter: normalizedFilter });
   }

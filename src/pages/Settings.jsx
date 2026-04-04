@@ -43,7 +43,7 @@ export default function Settings() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [status, setStatus] = useState(initialStatus);
   const [loading, setLoading] = useState(true);
-  const [selectedPanelId, setSelectedPanelId] = useState(() => String(searchParams.get('panel') || '').trim());
+  const selectedPanelId = String(searchParams.get('panel') || '').trim();
 
   useEffect(() => {
     let active = true;
@@ -196,7 +196,6 @@ export default function Settings() {
 
   function openPanel(panelId) {
     const normalizedPanelId = String(panelId || '').trim();
-    setSelectedPanelId(normalizedPanelId);
     const nextParams = new URLSearchParams();
     if (normalizedPanelId) {
       nextParams.set('panel', normalizedPanelId);
@@ -205,7 +204,6 @@ export default function Settings() {
   }
 
   function closePanel() {
-    setSelectedPanelId('');
     setSearchParams(new URLSearchParams(), { replace: true });
   }
 

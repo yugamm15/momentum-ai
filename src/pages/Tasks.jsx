@@ -22,14 +22,14 @@ const fadeUp = {
 export default function Tasks() {
   const { snapshot, refresh } = useWorkspace();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [query, setQuery] = useState(() => String(searchParams.get('q') || '').trim());
-  const [activeFilter, setActiveFilter] = useState(() => sanitizeTaskFilter(searchParams.get('filter')));
-  const [statusFocus, setStatusFocus] = useState(() => sanitizeTaskStatus(searchParams.get('status')));
-  const [ownerFocus, setOwnerFocus] = useState(() => String(searchParams.get('owner') || '').trim());
+  const query = String(searchParams.get('q') || '').trim();
+  const activeFilter = sanitizeTaskFilter(searchParams.get('filter'));
+  const statusFocus = sanitizeTaskStatus(searchParams.get('status'));
+  const ownerFocus = String(searchParams.get('owner') || '').trim();
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
   const [savingId, setSavingId] = useState('');
-  const [selectedTaskId, setSelectedTaskId] = useState(() => String(searchParams.get('task') || '').trim());
+  const selectedTaskId = String(searchParams.get('task') || '').trim();
   const [draggingTaskId, setDraggingTaskId] = useState('');
   const [dragTargetStatus, setDragTargetStatus] = useState('');
   const [error, setError] = useState('');
@@ -50,9 +50,13 @@ export default function Tasks() {
       const searchable = [
         task.title,
         getTaskOwner(task),
+        getTaskDueDate(task),
         getTaskSourceMeeting(task),
         task.sourceSnippet,
+        task.source_snippet,
         task.sourceMeeting,
+        task.reviewReason,
+        task.review_reason,
       ]
         .join(' ')
         .toLowerCase();
@@ -75,9 +79,9 @@ export default function Tasks() {
       }
 
       if (activeFilter === 'Active') return normalizeTaskStatus(task.status) !== 'done';
-      if (activeFilter === 'Needs review') return task.needsReview;
+      if (activeFilter === 'Needs review') return taskNeedsReview(task);
       if (activeFilter === 'Unassigned') return !getTaskOwner(task);
-      if (activeFilter === 'Missing deadline') return !task.dueDate;
+      if (activeFilter === 'Missing deadline') return !getTaskDueDate(task);
       if (activeFilter === 'Workspace matched') return Boolean(task.ownerProfileId);
       return true;
     });
@@ -87,7 +91,7 @@ export default function Tasks() {
     const total = snapshot.tasks.length;
     const active = snapshot.tasks.filter((task) => normalizeTaskStatus(task.status) !== 'done').length;
     const pending = snapshot.tasks.filter((task) => normalizeTaskStatus(task.status) === 'pending').length;
-    const review = snapshot.tasks.filter((task) => task.needsReview).length;
+    const review = snapshot.tasks.filter((task) => taskNeedsReview(task)).length;
     const done = snapshot.tasks.filter((task) => normalizeTaskStatus(task.status) === 'done').length;
 
     return { total, active, pending, review, done };
@@ -154,10 +158,6 @@ export default function Tasks() {
     const normalizedOwner = String(owner || '').trim();
     const normalizedTaskId = String(taskId || '').trim();
 
-    setActiveFilter(normalizedFilter);
-    setStatusFocus(normalizedStatus);
-    setOwnerFocus(normalizedOwner);
-    setSelectedTaskId(normalizedTaskId);
     syncView({
       nextFilter: normalizedFilter,
       nextStatus: normalizedStatus,
@@ -167,19 +167,15 @@ export default function Tasks() {
   }
 
   function handleQueryChange(nextValue) {
-    setQuery(nextValue);
     syncView({ nextQuery: nextValue, nextTaskId: '' });
-    setSelectedTaskId('');
   }
 
   function openTaskDetails(taskId) {
     const normalizedTaskId = String(taskId || '').trim();
-    setSelectedTaskId(normalizedTaskId);
     syncView({ nextTaskId: normalizedTaskId });
   }
 
   function closeTaskDetails() {
-    setSelectedTaskId('');
     syncView({ nextTaskId: '' });
   }
 
@@ -606,7 +602,7 @@ export default function Tasks() {
                   <span className="text-[10px] uppercase tracking-widest text-muted-foreground block mb-1">Due Date</span>
                   <span className="inline-flex items-center gap-1.5">
                     <Clock3 className="h-3.5 w-3.5 text-muted-foreground" />
-                    {selectedTask.dueDate || 'No constraint'}
+                    {getTaskDueDate(selectedTask) || 'No constraint'}
                   </span>
                 </div>
                 <button
@@ -696,6 +692,34 @@ function normalizeTaskStatus(value) {
 
 function getTaskOwner(task) {
   return String(task?.owner || task?.assignee || '').trim();
+}
+
+function getTaskDueDate(task) {
+  return String(task?.dueDate || task?.deadline || '').trim();
+}
+
+function taskNeedsReview(task) {
+  if (normalizeTaskStatus(task?.status) === 'needs-review') {
+    return true;
+  }
+
+  if (task?.needsReview) {
+    return true;
+  }
+
+  if (String(task?.reviewReason || task?.review_reason || '').trim()) {
+    return true;
+  }
+
+  if (!getTaskOwner(task)) {
+    return true;
+  }
+
+  if (!getTaskDueDate(task)) {
+    return true;
+  }
+
+  return false;
 }
 
 function normalizeOwnerKey(value) {
