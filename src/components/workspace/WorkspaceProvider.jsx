@@ -14,6 +14,7 @@ export function WorkspaceProvider({ children }) {
   const [snapshot, setSnapshot] = useState({
     meetings: [],
     tasks: [],
+    people: [],
     liveMeetings: [],
     liveTasks: [],
     analytics: {
@@ -21,6 +22,9 @@ export function WorkspaceProvider({ children }) {
       scoreTrend: [],
       topRisks: [],
       ownerLoad: [],
+      peopleTracked: 0,
+      matchedTaskOwners: 0,
+      speakerAttributedMeetings: 0,
       meetingDebt: 0,
       unassignedTasks: 0,
       missingDeadlines: 0,

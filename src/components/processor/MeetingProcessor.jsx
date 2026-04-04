@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { CheckCircle2, FileAudio, Loader2, UploadCloud } from 'lucide-react';
-import { apiUrl } from '../../lib/api';
+import { apiFetch } from '../../lib/api';
 
 export default function MeetingProcessor({ onComplete }) {
   const [file, setFile] = useState(null);
@@ -32,7 +32,7 @@ export default function MeetingProcessor({ onComplete }) {
       formData.append('file', file);
       formData.append('contentType', file.type || 'audio/webm');
 
-      const response = await fetch(apiUrl('/api/process-meeting-upload'), {
+      const response = await apiFetch('/api/process-meeting-upload', {
         method: 'POST',
         body: formData,
       });
@@ -64,10 +64,10 @@ export default function MeetingProcessor({ onComplete }) {
       <div className="mx-auto max-w-2xl text-center">
         <div className="momentum-pill-accent mx-auto">Manual meeting upload</div>
         <h2 className="mt-4 text-4xl font-semibold tracking-tight text-slate-950">
-          Keep a reliable demo fallback
+          Process a real recording without the extension
         </h2>
         <p className="mt-4 text-base leading-8 text-slate-600">
-          Upload a recording and let the server handle transcription, extraction, scoring, and storage while the extension flow keeps evolving.
+          Upload a meeting file and let the server handle transcription, extraction, scoring, and storage in the same live pipeline used by Momentum.
         </p>
       </div>
 

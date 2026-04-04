@@ -9,11 +9,12 @@ import {
   isRawUploadStatus,
 } from './_lib/meeting-audio.js';
 import { getLegacyTableNames } from './_lib/legacy-tables.js';
+import { resolveRequestWorkspaceContext } from './_lib/request-auth.js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   'Cache-Control': 'no-store',
 };
 
@@ -32,6 +33,9 @@ export async function POST(request) {
     }
 
     const supabase = createSupabaseClient(env);
+    const workspaceContext = await resolveRequestWorkspaceContext(request, supabase, {
+      allowAnonymous: true,
+    }).catch(() => null);
     const legacyTables = await getLegacyTableNames(supabase);
     const { data: meeting, error } = await supabase
       .from(legacyTables.meetings)
@@ -41,6 +45,14 @@ export async function POST(request) {
 
     if (error || !meeting?.id) {
       return json({ error: error?.message || 'Meeting not found.' }, 404);
+    }
+
+    if (
+      workspaceContext?.workspaceId &&
+      String(meeting.summary || '').includes('Workspace id:') &&
+      !String(meeting.summary || '').includes(`Workspace id: ${workspaceContext.workspaceId}.`)
+    ) {
+      return json({ error: 'Meeting not found.' }, 404);
     }
 
     if (meeting.status === 'completed' && String(meeting.transcript || '').trim()) {

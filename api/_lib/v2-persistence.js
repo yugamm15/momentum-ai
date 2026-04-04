@@ -1,3 +1,8 @@
+import {
+  createPersonDirectory,
+  matchDirectoryPerson,
+} from './people-directory.js';
+
 const DEMO_WORKSPACE_SLUG = 'momentum-demo';
 const DEMO_WORKSPACE_NAME = 'Momentum Workspace';
 const ANALYSIS_VERSION = 'v2-rich-analysis';
@@ -121,6 +126,7 @@ export function createMeetingContractFromAnalysis({
     legacyMeetingId,
     sourceMetadata,
     transcriptText: String(transcriptText || '').trim(),
+    transcriptSegments: normalizeIncomingTranscriptSegments(sourceMetadata?.transcriptSegments),
     audioUrl: String(audioUrl || '').trim() || null,
     aiTitle: String(analysis?.title || 'Meeting Summary').trim() || 'Meeting Summary',
     summaryParagraph: summaryParagraph || 'Momentum processed the meeting, but the summary needs review.',
@@ -147,6 +153,7 @@ export function createMeetingContractFromUnifiedMeeting(meeting) {
       recordingStoppedAt: meeting?.createdAt || null,
     },
     transcriptText: String(meeting?.transcriptText || '').trim() || joinTranscript(meeting?.transcript),
+    transcriptSegments: normalizeIncomingTranscriptSegments(meeting?.transcript),
     audioUrl: String(meeting?.audioUrl || '').trim() || null,
     aiTitle: String(meeting?.aiTitle || 'Meeting Summary').trim() || 'Meeting Summary',
     summaryParagraph: String(meeting?.summaryParagraph || '').trim() || 'Momentum backfilled this meeting from the legacy schema.',
@@ -172,10 +179,16 @@ export async function persistMeetingContract(supabase, contract) {
     return null;
   }
 
-  const transcriptSegments = buildTranscriptSegmentsFromText(
-    contract.transcriptText,
-    contract.sourceMetadata?.participantNames || []
+  const workspaceDirectory = await loadWorkspaceDirectory(supabase, workspaceContext.workspaceId);
+  const participantRoster = resolveParticipantRoster(
+    contract.sourceMetadata?.participantNames || [],
+    workspaceDirectory
   );
+  const tasks = resolveTaskDirectoryMatches(contract.tasks, workspaceDirectory);
+  const transcriptSegments =
+    contract.transcriptSegments?.length > 0
+      ? normalizeIncomingTranscriptSegments(contract.transcriptSegments)
+      : buildTranscriptSegmentsFromText(contract.transcriptText);
 
   const basePayload = {
     workspace_id: workspaceContext.workspaceId,
@@ -220,10 +233,10 @@ export async function persistMeetingContract(supabase, contract) {
 
   await clearMeetingChildren(supabase, meeting.id);
   await insertMeetingChildren(supabase, meeting.id, {
-    participants: contract.sourceMetadata?.participantNames || [],
+    participants: participantRoster,
     transcriptSegments,
     decisions: contract.decisions,
-    tasks: contract.tasks,
+    tasks,
     checklist: contract.checklist,
     riskFlags: contract.riskFlags,
   });
@@ -276,13 +289,14 @@ async function clearMeetingChildren(supabase, meetingId) {
 }
 
 async function insertMeetingChildren(supabase, meetingId, payload) {
-  const participantRows = Array.from(
-    new Set((payload.participants || []).map((name) => cleanNullable(name)).filter(Boolean))
-  ).map((displayName) => ({
-    meeting_id: meetingId,
-    display_name: displayName,
-    confidence: 0.9,
-  }));
+  const participantRows = (Array.isArray(payload.participants) ? payload.participants : [])
+    .map((participant) => ({
+      meeting_id: meetingId,
+      display_name: cleanNullable(participant?.displayName),
+      matched_profile_id: participant?.profileId || null,
+      confidence: clampConfidence(participant?.confidence),
+    }))
+    .filter((participant) => participant.display_name);
 
   if (participantRows.length > 0) {
     await supabase.from('meeting_participants').insert(participantRows);
@@ -310,6 +324,7 @@ async function insertMeetingChildren(supabase, meetingId, payload) {
       legacy_task_id: task.legacyTaskId || null,
       title: normalizedTitle,
       owner_name: cleanNullable(task.assignee),
+      owner_profile_id: task.ownerProfileId || null,
       due_date: dueDateFields.dueDate,
       due_date_label: dueDateFields.dueDateLabel,
       status: normalizeTaskStatus(task.status, task.needs_review),
@@ -371,20 +386,109 @@ async function insertProcessingEvents(supabase, meetingId) {
   await supabase.from('meeting_processing_events').insert(events);
 }
 
-export function buildTranscriptSegmentsFromText(transcriptText, participantNames = []) {
-  const speakers = participantNames.length > 0 ? participantNames : ['Speaker 1', 'Speaker 2', 'Speaker 3'];
+async function loadWorkspaceDirectory(supabase, workspaceId) {
+  const [{ data: profiles }, { data: memberships }] = await Promise.all([
+    supabase
+      .from('profiles')
+      .select('id, email, full_name, workspace_id')
+      .eq('workspace_id', workspaceId),
+    supabase
+      .from('workspace_members')
+      .select('profile_id, role')
+      .eq('workspace_id', workspaceId),
+  ]);
+
+  const membershipByProfileId = new Map(
+    (memberships || []).map((member) => [member.profile_id, member])
+  );
+
+  return createPersonDirectory(profiles || [], membershipByProfileId);
+}
+
+function resolveParticipantRoster(participants = [], directory = []) {
+  return Array.from(
+    new Map(
+      (Array.isArray(participants) ? participants : [])
+        .map((name) => String(name || '').trim())
+        .filter(Boolean)
+        .map((displayName) => {
+          const match = matchDirectoryPerson(displayName, directory);
+          const record = match.status === 'matched' ? match.record : null;
+
+          return [
+            displayName.toLowerCase(),
+            {
+              displayName: record?.displayName || displayName,
+              profileId: record?.id || null,
+              confidence: record ? match.confidence : 0.68,
+            },
+          ];
+        })
+    ).values()
+  );
+}
+
+function resolveTaskDirectoryMatches(tasks = [], directory = []) {
+  return (Array.isArray(tasks) ? tasks : []).map((task) => {
+    const match = matchDirectoryPerson(task?.assignee, directory);
+    if (match.status !== 'matched') {
+      return {
+        ...task,
+        ownerProfileId: null,
+      };
+    }
+
+    return {
+      ...task,
+      assignee: match.record.displayName,
+      ownerProfileId: match.record.id,
+    };
+  });
+}
+
+function normalizeIncomingTranscriptSegments(segments = []) {
+  return (Array.isArray(segments) ? segments : [])
+    .map((segment, index) => ({
+      speaker: cleanNullable(segment?.speaker || segment?.speakerLabel),
+      text: cleanNullable(segment?.text),
+      startedAtSeconds: normalizeSegmentSecond(
+        segment?.startedAtSeconds ?? segment?.started_at_seconds,
+        index * 18
+      ),
+      endedAtSeconds: normalizeSegmentSecond(
+        segment?.endedAtSeconds ?? segment?.ended_at_seconds,
+        (index * 18) + 16
+      ),
+    }))
+    .filter((segment) => segment.text);
+}
+
+function normalizeSegmentSecond(value, fallback) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return Number(fallback.toFixed(2));
+  }
+
+  return Number(numeric.toFixed(2));
+}
+
+export function buildTranscriptSegmentsFromText(transcriptText) {
   const sentences = String(transcriptText || '')
     .replace(/\s+/g, ' ')
     .split(/(?<=[.!?])\s+/)
     .map((sentence) => sentence.trim())
-    .filter(Boolean)
-    .slice(0, 24);
+    .filter(Boolean);
+  const chunks = [];
 
-  return sentences.map((text, index) => ({
-    speaker: speakers[index % speakers.length],
+  for (let index = 0; index < sentences.length; index += 2) {
+    chunks.push(sentences.slice(index, index + 2).join(' '));
+  }
+
+  return chunks.slice(0, 24).map((text, index) => ({
+    speaker: null,
     text,
-    startedAtSeconds: Number((index * 22.5).toFixed(2)),
-    endedAtSeconds: Number((((index + 1) * 22.5) - 1).toFixed(2)),
+    startedAtSeconds: Number((index * 18).toFixed(2)),
+    endedAtSeconds: Number((((index + 1) * 18) - 2).toFixed(2)),
   }));
 }
 
@@ -404,6 +508,7 @@ function normalizeTasks(tasks) {
       legacyTaskId: task?.legacyTaskId || task?.legacy_task_id || null,
       title: cleanNullable(task?.title),
       assignee: normalizeAmbiguousField(task?.assignee || task?.owner || task?.owner_name),
+      ownerProfileId: task?.ownerProfileId || task?.owner_profile_id || null,
       deadline: normalizeDeadline(task?.deadline || task?.dueDate || task?.due_date || task?.due_date_label),
       status: cleanNullable(task?.status) || 'pending',
       confidence: clampConfidence(task?.confidence),

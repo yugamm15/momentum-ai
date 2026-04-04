@@ -38,12 +38,12 @@ export default function Login({ session }) {
       <div className="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[1.05fr_0.95fr]">
         <section className="momentum-card momentum-spotlight p-8 lg:p-10">
           <Link to="/" className="inline-flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-gradient-to-br from-sky-300 via-sky-400 to-blue-500 text-lg font-black text-slate-950 shadow-[0_18px_45px_rgba(56,189,248,0.24)]">
+            <div className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-gradient-to-br from-teal-300 via-cyan-300 to-sky-400 text-lg font-black text-slate-950 shadow-[0_18px_45px_rgba(45,212,191,0.24)]">
               M
             </div>
             <div>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-sky-700">
-                Momentum AI
+              <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-teal-700">
+                Momentum
               </div>
               <div className="text-lg font-semibold tracking-tight text-slate-950">
                 Sign in to your workspace
@@ -54,13 +54,13 @@ export default function Login({ session }) {
           <div className="mt-10 max-w-2xl">
             <div className="momentum-pill-accent">
               <Sparkles className="h-4 w-4" />
-              SaaS-ready access
+              Real workspace access
             </div>
             <h1 className="mt-5 text-5xl font-semibold tracking-tight text-slate-950">
-              Bring meetings into an execution system, not a note graveyard.
+              Enter the live system, not a placeholder shell.
             </h1>
             <p className="mt-5 max-w-xl text-base leading-8 text-slate-600">
-              Use email login to access the real workspace, real uploads, and the live execution system.
+              Sign in with email to access the scoped workspace view, live meeting records, and the current execution pipeline.
             </p>
           </div>
 
@@ -98,36 +98,34 @@ export default function Login({ session }) {
           <div className="mt-5 flex items-center gap-3 text-xs text-slate-500">
             <ShieldCheck className="h-4 w-4 text-emerald-600" />
             {isSupabaseConfigured
-              ? 'Auth is configured. This flow sends a real magic link.'
+              ? 'Auth is configured and this flow sends a real magic link.'
               : 'Auth is not configured yet on this deployment.'}
           </div>
         </section>
 
         <section className="momentum-dark-panel p-8 lg:p-10">
-          <div className="relative">
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-sky-100">
-              <Sparkles className="h-4 w-4" />
-              Real workspace access
-            </div>
+          <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-teal-100">
+            <Sparkles className="h-4 w-4" />
+            What unlocks after sign-in
+          </div>
 
-            <h2 className="mt-6 text-4xl font-semibold tracking-tight text-white">
-              Sign in to the real system.
-            </h2>
-            <p className="mt-4 max-w-md text-sm leading-7 text-slate-300">
-              Momentum now expects live data. Once auth is configured, this login sends people into the real workspace instead of a placeholder environment.
-            </p>
+          <h2 className="mt-6 text-4xl font-semibold tracking-tight text-white">
+            Scoped workspace visibility.
+          </h2>
+          <p className="mt-4 max-w-md text-sm leading-7 text-slate-300">
+            The goal is a workspace view that shows only the meetings, people, and tasks that belong to the signed-in team context.
+          </p>
 
-            <div className="mt-8 grid gap-3">
-              {[
-                'Real meeting uploads flow into the actual workspace snapshot',
-                'Meeting detail pages show live decisions, risks, tasks, and transcript evidence',
-                'Cross-meeting task board and analytics reflect only real records',
-              ].map((item) => (
-                <div key={item} className="rounded-[22px] border border-white/10 bg-white/5 px-4 py-4 text-sm text-slate-200">
-                  {item}
-                </div>
-              ))}
-            </div>
+          <div className="mt-8 grid gap-3">
+            {[
+              'Meeting pages combine recording playback, transcript evidence, people, and extracted work.',
+              'Task editing keeps owner suggestions grounded in the people pool visible to this workspace.',
+              'Analytics surfaces reveal where ownership is mapped cleanly and where the system still needs review.',
+            ].map((item) => (
+              <div key={item} className="rounded-[22px] border border-white/10 bg-white/5 px-4 py-4 text-sm text-slate-200">
+                {item}
+              </div>
+            ))}
           </div>
         </section>
       </div>

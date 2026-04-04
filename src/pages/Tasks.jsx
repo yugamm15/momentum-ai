@@ -1,17 +1,17 @@
 import { useDeferredValue, useMemo, useState } from 'react';
-import { Plus, Search } from 'lucide-react';
+import { Plus, Search, Users } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useWorkspace } from '../components/workspace/useWorkspace';
 import { createWorkspaceTask, updateWorkspaceTask } from '../lib/workspace-data';
 
 const columns = [
   { id: 'pending', label: 'Pending' },
-  { id: 'in-progress', label: 'In Progress' },
-  { id: 'needs-review', label: 'Needs Review' },
+  { id: 'in-progress', label: 'In progress' },
+  { id: 'needs-review', label: 'Needs review' },
   { id: 'done', label: 'Done' },
 ];
 
-const filterOptions = ['All', 'Needs review', 'Unassigned', 'Missing deadline'];
+const filterOptions = ['All', 'Needs review', 'Unassigned', 'Missing deadline', 'Workspace matched'];
 
 export default function Tasks() {
   const { snapshot, refresh } = useWorkspace();
@@ -57,6 +57,10 @@ export default function Tasks() {
         return !task.dueDate;
       }
 
+      if (activeFilter === 'Workspace matched') {
+        return Boolean(task.ownerProfileId);
+      }
+
       return true;
     });
   }, [activeFilter, deferredQuery, snapshot.tasks]);
@@ -75,11 +79,7 @@ export default function Tasks() {
 
   const liveMeetings = snapshot.liveMeetings;
   const ownerSuggestions = Array.from(
-    new Set(
-      snapshot.tasks
-        .map((task) => task.owner)
-        .filter((owner) => owner && owner !== 'Unassigned')
-    )
+    new Set((snapshot.people || []).map((person) => person.displayName).filter(Boolean))
   );
 
   async function cycleStatus(task) {
@@ -132,12 +132,15 @@ export default function Tasks() {
       <section className="momentum-card momentum-spotlight p-6">
         <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
           <div className="max-w-3xl">
-            <div className="momentum-pill-accent">Execution board</div>
+            <div className="momentum-pill-accent">
+              <Users className="h-4 w-4" />
+              Execution board
+            </div>
             <h1 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
-              Manage follow-through with less friction.
+              Move work forward with a real people pool behind it.
             </h1>
             <p className="mt-4 text-base leading-8 text-slate-600">
-              This board is optimized for the real work: triage ambiguity, assign owners faster, and connect every action back to the meeting that generated it.
+              The board becomes trustworthy when owner suggestions are grounded in the workspace roster, not in a free-text field that drifts every meeting.
             </p>
           </div>
 
@@ -148,7 +151,7 @@ export default function Tasks() {
                 type="text"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search tasks, owners, or source snippets"
+                placeholder="Search tasks, owners, or source evidence"
               />
             </div>
             <button
@@ -170,8 +173,8 @@ export default function Tasks() {
 
         <div className="mt-6 grid gap-3 md:grid-cols-4">
           {[
-            { label: 'Tasks tracked', value: summary.total, meta: 'Across all visible meetings' },
-            { label: 'Still pending', value: summary.pending, meta: 'Not yet done' },
+            { label: 'Tasks tracked', value: summary.total, meta: 'Across this workspace' },
+            { label: 'Still pending', value: summary.pending, meta: 'Not marked done yet' },
             { label: 'Need review', value: summary.review, meta: 'Ambiguous or risky items' },
             { label: 'Completion', value: `${summary.completion}%`, meta: 'Execution progress' },
           ].map((item) => (
@@ -282,8 +285,23 @@ export default function Tasks() {
                       {task.sourceMeeting}
                     </Link>
                     <div className="mt-2 text-sm font-semibold text-slate-950">{task.title}</div>
-                    <div className="mt-2 text-xs text-slate-500">
-                      {task.owner || 'Needs owner'} {' - '} {task.dueDate || 'Missing deadline'}
+                    <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold">
+                      <span className="rounded-full bg-white px-3 py-1 text-slate-700 shadow-sm">
+                        {task.owner || 'Needs owner'}
+                      </span>
+                      <span className="rounded-full bg-white px-3 py-1 text-slate-700 shadow-sm">
+                        {task.dueDate || 'Missing deadline'}
+                      </span>
+                      {task.ownerProfileId ? (
+                        <span className="rounded-full bg-emerald-100 px-3 py-1 text-emerald-700">
+                          Workspace matched
+                        </span>
+                      ) : null}
+                      {task.needsReview ? (
+                        <span className="rounded-full bg-amber-100 px-3 py-1 text-amber-700">
+                          Needs review
+                        </span>
+                      ) : null}
                     </div>
                     <div className="mt-3 rounded-[18px] border border-slate-200 bg-white px-3 py-3 text-xs leading-6 text-slate-600">
                       {task.sourceSnippet}
@@ -316,4 +334,3 @@ export default function Tasks() {
     </div>
   );
 }
-

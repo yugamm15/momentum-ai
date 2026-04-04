@@ -1,4 +1,4 @@
-import { AlertTriangle, BarChart3, Gauge, Users } from 'lucide-react';
+import { AlertTriangle, AudioLines, BarChart3, Gauge, Users } from 'lucide-react';
 import { useWorkspace } from '../components/workspace/useWorkspace';
 
 function barColor(score) {
@@ -15,7 +15,7 @@ function barColor(score) {
 
 export default function Analytics() {
   const { snapshot } = useWorkspace();
-  const { analytics, meetings } = snapshot;
+  const { analytics, meetings, people } = snapshot;
 
   return (
     <div className="space-y-6">
@@ -25,10 +25,10 @@ export default function Analytics() {
           Analytics
         </div>
         <h1 className="mt-4 text-4xl font-semibold tracking-tight text-slate-950 lg:text-5xl">
-          Execution quality across the workspace
+          Patterns behind meeting quality and follow-through
         </h1>
         <p className="mt-4 max-w-3xl text-base leading-8 text-slate-600">
-          Momentum becomes unique when the workspace makes ambiguity, accountability, and follow-through visible over time instead of just storing transcripts.
+          The point of the analytics surface is not volume. It is to show where the system is trustworthy, where it still needs human review, and how accountability is spreading across the workspace.
         </p>
       </section>
 
@@ -36,8 +36,8 @@ export default function Analytics() {
         {[
           { label: 'Meeting debt', value: analytics.meetingDebt, meta: 'Open ambiguity signals', icon: Gauge },
           { label: 'Unassigned tasks', value: analytics.unassignedTasks, meta: 'Ownership gaps', icon: Users },
-          { label: 'Missing deadlines', value: analytics.missingDeadlines, meta: 'Execution timing gaps', icon: AlertTriangle },
-          { label: 'Meetings tracked', value: meetings.length, meta: 'Real workspace history', icon: BarChart3 },
+          { label: 'People tracked', value: analytics.peopleTracked || people.length, meta: 'Workspace + meeting participants', icon: BarChart3 },
+          { label: 'Named-speaker recordings', value: analytics.speakerAttributedMeetings || 0, meta: 'True speaker attribution', icon: AudioLines },
         ].map((card) => {
           const Icon = card.icon;
           return (
@@ -57,7 +57,7 @@ export default function Analytics() {
         })}
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+      <section className="grid gap-6 xl:grid-cols-[1.18fr_0.82fr]">
         <div className="momentum-card p-6">
           <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
             Meeting score trend
@@ -81,6 +81,11 @@ export default function Analytics() {
                   </div>
                 </div>
               ))}
+              {analytics.scoreTrend.length === 0 ? (
+                <div className="flex h-full flex-1 items-center justify-center text-sm text-slate-400">
+                  Process a few meetings to start building a trend line.
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
@@ -125,6 +130,57 @@ export default function Analytics() {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-2">
+        <div className="momentum-card p-6">
+          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+            <Users className="h-4 w-4 text-teal-700" />
+            People coverage
+          </div>
+          <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">
+            Recognized people pool
+          </h2>
+          <div className="mt-5 space-y-3">
+            {(people || []).slice(0, 8).map((person) => (
+              <div key={person.id} className="momentum-card-soft px-4 py-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900">{person.displayName}</div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      {person.isWorkspaceMember ? person.email || 'Workspace member' : 'Meeting participant'}
+                    </div>
+                  </div>
+                  <div className="text-right text-xs text-slate-500">
+                    <div>{person.ownedTaskCount} tasks</div>
+                    <div className="mt-1">{person.meetingCount} meetings</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="momentum-card p-6">
+          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+            <AlertTriangle className="h-4 w-4 text-amber-700" />
+            System honesty
+          </div>
+          <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">
+            What still needs work
+          </h2>
+          <div className="mt-5 space-y-3 text-sm leading-7 text-slate-600">
+            <div className="momentum-card-soft px-4 py-4">
+              {analytics.matchedTaskOwners || 0} of {snapshot.tasks.length} tasks currently map to a known workspace person.
+            </div>
+            <div className="momentum-card-soft px-4 py-4">
+              {analytics.speakerAttributedMeetings || 0} of {meetings.length} meetings currently include trustworthy named-speaker transcript data.
+            </div>
+            <div className="rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-4">
+              Speaker attribution should never be faked. If the system does not know who said a line, the transcript must stay unattributed.
             </div>
           </div>
         </div>

@@ -1,11 +1,11 @@
-import { apiUrl } from './api';
+import { apiFetch } from './api';
 import { getSupabaseClient, isSupabaseConfigured } from './supabase';
 import {
   scoreColor,
   transformLegacyMeeting,
 } from './meeting-transforms';
 
-function buildAnalytics(meetings, tasks) {
+function buildAnalytics(meetings, tasks, people = []) {
   const readyMeetings = meetings.filter((meeting) => meeting.processingStatus === 'ready');
   const pendingTasks = tasks.filter((task) => task.status !== 'done');
   const completedTasks = tasks.filter((task) => task.status === 'done');
@@ -56,6 +56,9 @@ function buildAnalytics(meetings, tasks) {
       .map(([name, count]) => ({ name, count }))
       .sort((left, right) => right.count - left.count)
       .slice(0, 6),
+    peopleTracked: people.length,
+    matchedTaskOwners: tasks.filter((task) => task.ownerProfileId).length,
+    speakerAttributedMeetings: meetings.filter((meeting) => meeting.transcriptAttribution === 'speaker-attributed').length,
     meetingDebt: meetings.reduce((total, meeting) => total + (meeting.meetingRisks?.length || 0), 0),
     unassignedTasks: tasks.filter((task) => !task.owner).length,
     missingDeadlines: tasks.filter((task) => !task.dueDate).length,
@@ -72,9 +75,10 @@ export async function fetchWorkspaceSnapshot() {
     return {
       meetings: [],
       tasks: [],
+      people: [],
       liveMeetings: [],
       liveTasks: [],
-      analytics: buildAnalytics([], []),
+      analytics: buildAnalytics([], [], []),
       source: 'empty',
       error: 'Supabase is not configured, so no real workspace data can be loaded yet.',
     };
@@ -111,18 +115,20 @@ export async function fetchWorkspaceSnapshot() {
     return {
       meetings,
       tasks,
+      people: buildFallbackPeople(meetings, tasks),
       liveMeetings: transformedLiveMeetings,
       liveTasks: transformedLiveTasks,
-      analytics: buildAnalytics(meetings, tasks),
+      analytics: buildAnalytics(meetings, tasks, buildFallbackPeople(meetings, tasks)),
       source: transformedLiveMeetings.length > 0 ? 'live' : 'empty',
     };
   } catch (error) {
     return {
       meetings: [],
       tasks: [],
+      people: [],
       liveMeetings: [],
       liveTasks: [],
-      analytics: buildAnalytics([], []),
+      analytics: buildAnalytics([], [], []),
       source: 'error',
       error: error.message || 'Momentum could not load the live workspace snapshot.',
     };
@@ -193,7 +199,7 @@ export async function createWorkspaceTask(task) {
 }
 
 export async function askMeetingQuestion(meeting, question) {
-  const response = await fetch(apiUrl('/api/ask-meeting-question'), {
+  const response = await apiFetch('/api/ask-meeting-question', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -212,9 +218,26 @@ export async function askMeetingQuestion(meeting, question) {
   return payload.answer;
 }
 
+export async function processStoredMeeting(meetingId) {
+  const response = await apiFetch('/api/process-stored-meeting', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ meetingId }),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.error || 'Momentum could not start analysis for this stored recording.');
+  }
+
+  return payload;
+}
+
 async function fetchWorkspaceSnapshotFromApi() {
   try {
-    const response = await fetch(apiUrl('/api/workspace-snapshot'), {
+    const response = await apiFetch('/api/workspace-snapshot', {
       headers: {
         'Cache-Control': 'no-store',
       },
@@ -237,7 +260,7 @@ async function fetchWorkspaceSnapshotFromApi() {
 
 async function updateWorkspaceTaskThroughApi(taskId, updates) {
   try {
-    const response = await fetch(apiUrl('/api/tasks'), {
+    const response = await apiFetch('/api/tasks', {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -260,7 +283,7 @@ async function updateWorkspaceTaskThroughApi(taskId, updates) {
 
 async function createWorkspaceTaskThroughApi(task) {
   try {
-    const response = await fetch(apiUrl('/api/tasks'), {
+    const response = await apiFetch('/api/tasks', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -276,4 +299,63 @@ async function createWorkspaceTaskThroughApi(task) {
   } catch {
     return null;
   }
+}
+
+function buildFallbackPeople(meetings, tasks) {
+  const people = new Map();
+
+  meetings.forEach((meeting) => {
+    (meeting.participants || []).forEach((participant) => {
+      if (!participant) {
+        return;
+      }
+
+      const key = participant.toLowerCase();
+      if (!people.has(key)) {
+        people.set(key, {
+          id: `guest:${key}`,
+          profileId: null,
+          displayName: participant,
+          email: '',
+          role: 'guest',
+          source: 'meeting',
+          isWorkspaceMember: false,
+          meetingCount: 0,
+          ownedTaskCount: 0,
+          openTaskCount: 0,
+        });
+      }
+
+      people.get(key).meetingCount += 1;
+    });
+  });
+
+  tasks.forEach((task) => {
+    if (!task.owner) {
+      return;
+    }
+
+    const key = task.owner.toLowerCase();
+    if (!people.has(key)) {
+      people.set(key, {
+        id: `guest:${key}`,
+        profileId: null,
+        displayName: task.owner,
+        email: task.ownerEmail || '',
+        role: 'guest',
+        source: 'meeting',
+        isWorkspaceMember: false,
+        meetingCount: 0,
+        ownedTaskCount: 0,
+        openTaskCount: 0,
+      });
+    }
+
+    people.get(key).ownedTaskCount += 1;
+    if (task.status !== 'done') {
+      people.get(key).openTaskCount += 1;
+    }
+  });
+
+  return Array.from(people.values()).sort((left, right) => right.ownedTaskCount - left.ownedTaskCount);
 }

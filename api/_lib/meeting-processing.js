@@ -234,6 +234,8 @@ async function analyzeTranscript(transcript, geminiKey, sourceMetadata) {
     '- Be conservative. Do not invent owners or deadlines silently.',
     '- Use UNCLEAR when ownership is ambiguous.',
     '- Use Missing when no deadline is stated.',
+    '- When one participant asks another named participant to do something, assign the task to the named recipient, not the speaker.',
+    '- Prefer assignee names that exactly match the visible participant roster when possible.',
     '- Keep source_snippet short and grounded in the transcript.',
     '- Decisions should be explicit or strongly implied, not guesses.',
     '- If a task has UNCLEAR owner or Missing deadline, set needs_review to true.',
@@ -750,6 +752,7 @@ function normalizeSourceMetadata(sourceMetadata, meetingCode) {
     meetingUrl: sanitizeOptionalField(sourceMetadata?.meetingUrl),
     meetingLabel: sanitizeOptionalField(sourceMetadata?.meetingLabel),
     participantNames: dedupeNames(sourceMetadata?.participantNames),
+    transcriptSegments: normalizeSourceTranscriptSegments(sourceMetadata?.transcriptSegments),
     recordingStartedAt: sanitizeOptionalField(sourceMetadata?.recordingStartedAt),
     recordingStoppedAt: sanitizeOptionalField(sourceMetadata?.recordingStoppedAt),
     connectionToken: sanitizeOptionalField(sourceMetadata?.connectionToken),
@@ -1074,6 +1077,17 @@ function dedupeNames(names) {
         .filter(Boolean)
     )
   );
+}
+
+function normalizeSourceTranscriptSegments(segments) {
+  return (Array.isArray(segments) ? segments : [])
+    .map((segment) => ({
+      speaker: sanitizeOptionalField(segment?.speaker || segment?.speakerLabel),
+      text: sanitizeOptionalField(segment?.text),
+      startedAtSeconds: Number(segment?.startedAtSeconds ?? segment?.started_at_seconds ?? 0),
+      endedAtSeconds: Number(segment?.endedAtSeconds ?? segment?.ended_at_seconds ?? 0),
+    }))
+    .filter((segment) => segment.text);
 }
 
 function clampScore(value) {

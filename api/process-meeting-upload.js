@@ -4,11 +4,12 @@ import {
   processMeetingAudio,
 } from './_lib/meeting-processing.js';
 import { storeRawMeetingAudio } from './_lib/meeting-audio.js';
+import { resolveRequestWorkspaceContext } from './_lib/request-auth.js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   'Cache-Control': 'no-store',
 };
 
@@ -41,6 +42,9 @@ export async function POST(request) {
     }
 
     const supabase = createSupabaseClient(env);
+    const requestContext = await resolveRequestWorkspaceContext(request, supabase, {
+      allowAnonymous: true,
+    }).catch(() => null);
     try {
       if (!env.groqKey) {
         throw new Error('Transcription environment is incomplete.');
@@ -62,8 +66,8 @@ export async function POST(request) {
           recordingStoppedAt,
           extensionVersion,
           connectionToken,
-          workspaceId,
-          userId,
+          workspaceId: workspaceId || requestContext?.workspaceId || '',
+          userId: userId || requestContext?.profileId || '',
         },
       });
 
@@ -93,8 +97,8 @@ export async function POST(request) {
         sourcePlatform,
         extensionVersion,
         connectionToken,
-        workspaceId,
-        userId,
+        workspaceId: workspaceId || requestContext?.workspaceId || '',
+        userId: userId || requestContext?.profileId || '',
       });
 
       return json({

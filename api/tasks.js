@@ -4,11 +4,12 @@ import {
   getUnifiedWorkspaceSnapshot,
   updateTaskRecord,
 } from './_lib/unified-workspace.js';
+import { resolveRequestWorkspaceContext } from './_lib/request-auth.js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PATCH, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   'Cache-Control': 'no-store',
 };
 
@@ -16,11 +17,17 @@ export async function OPTIONS() {
   return new Response(null, { status: 204, headers: corsHeaders });
 }
 
-export async function GET() {
+export async function GET(request) {
   try {
     const env = getEnv({ requireGroq: false, requireGemini: false });
     const supabase = createSupabaseClient(env);
-    const snapshot = await getUnifiedWorkspaceSnapshot(supabase);
+    const workspaceContext = await resolveRequestWorkspaceContext(request, supabase, {
+      allowAnonymous: true,
+    }).catch(() => null);
+    const snapshot = await getUnifiedWorkspaceSnapshot(supabase, {
+      workspaceId: workspaceContext?.workspaceId || null,
+      profileId: workspaceContext?.profileId || null,
+    });
     return json({
       tasks: snapshot.tasks,
       source: snapshot.source,
@@ -35,6 +42,9 @@ export async function POST(request) {
   try {
     const env = getEnv({ requireGroq: false, requireGemini: false });
     const supabase = createSupabaseClient(env);
+    const workspaceContext = await resolveRequestWorkspaceContext(request, supabase, {
+      allowAnonymous: true,
+    }).catch(() => null);
     const body = await request.json();
     const meetingId = String(body?.meetingId || '').trim();
     const title = String(body?.title || '').trim();
@@ -49,6 +59,8 @@ export async function POST(request) {
       owner: String(body?.owner || '').trim(),
       dueDate: String(body?.dueDate || '').trim(),
       status: String(body?.status || 'pending').trim(),
+      workspaceId: workspaceContext?.workspaceId || null,
+      editedByProfileId: workspaceContext?.profileId || null,
     });
 
     return json({ ok: true });
@@ -61,6 +73,9 @@ export async function PATCH(request) {
   try {
     const env = getEnv({ requireGroq: false, requireGemini: false });
     const supabase = createSupabaseClient(env);
+    const workspaceContext = await resolveRequestWorkspaceContext(request, supabase, {
+      allowAnonymous: true,
+    }).catch(() => null);
     const body = await request.json();
     const taskId = String(body?.taskId || '').trim();
 
@@ -73,6 +88,8 @@ export async function PATCH(request) {
       owner: body?.owner,
       dueDate: body?.dueDate,
       status: body?.status,
+      workspaceId: workspaceContext?.workspaceId || null,
+      editedByProfileId: workspaceContext?.profileId || null,
     });
 
     return json({ ok: true });

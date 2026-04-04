@@ -4,11 +4,12 @@ import {
   getEnv,
 } from './_lib/meeting-processing.js';
 import { getUnifiedWorkspaceSnapshot } from './_lib/unified-workspace.js';
+import { resolveRequestWorkspaceContext } from './_lib/request-auth.js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   'Cache-Control': 'no-store',
 };
 
@@ -32,7 +33,13 @@ export async function POST(request) {
     }
 
     const supabase = createSupabaseClient(env);
-    const snapshot = await getUnifiedWorkspaceSnapshot(supabase);
+    const workspaceContext = await resolveRequestWorkspaceContext(request, supabase, {
+      allowAnonymous: true,
+    }).catch(() => null);
+    const snapshot = await getUnifiedWorkspaceSnapshot(supabase, {
+      workspaceId: workspaceContext?.workspaceId || null,
+      profileId: workspaceContext?.profileId || null,
+    });
     const meeting = snapshot.meetings.find((item) => item.id === meetingId);
 
     if (!meeting?.id) {

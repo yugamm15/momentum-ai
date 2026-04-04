@@ -9,22 +9,22 @@ export default function UploadHub() {
           <div className="max-w-3xl">
             <div className="momentum-pill-accent">
               <CloudUpload className="h-4 w-4" />
-              Upload fallback
+              Manual intake
             </div>
             <h1 className="mt-4 text-4xl font-semibold tracking-tight text-slate-950 lg:text-5xl">
-              Manual meeting intake
+              Bring in an existing recording
             </h1>
             <p className="mt-4 text-base leading-8 text-slate-600">
-              The extension should be the main story, but keeping a manual upload route gives you a reliable hackathon fallback and a safe admin path after demo day.
+              Use this route when the meeting was recorded outside the extension or when you need to process a file that already exists.
             </p>
           </div>
           <div className="rounded-[24px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
             <div className="flex items-center gap-2 font-semibold">
               <ShieldCheck className="h-4 w-4" />
-              Compatibility-safe
+              Same pipeline
             </div>
             <div className="mt-1 text-emerald-800/90">
-              This still uses the existing upload and processing API path.
+              This still lands in the live processing path and workspace snapshot.
             </div>
           </div>
         </div>

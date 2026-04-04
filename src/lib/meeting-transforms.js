@@ -1,5 +1,6 @@
 const reviewTokens = ['unclear', 'unknown', 'someone', 'missing', 'tbd'];
 const sentenceSplitPattern = /(?<=[.!?])\s+/;
+const rawUploadStatusPrefixes = ['raw-uploaded:', 'audio-uploaded:'];
 const placeholderMeetingTitles = [
   'brief interaction',
   'brief exchange',
@@ -89,14 +90,20 @@ function niceTimeFromDate(value) {
   }).format(date);
 }
 
-function transcriptSegmentsFromText(text, participants = []) {
-  const speakers = participants.length > 0 ? participants : ['Speaker 1', 'Speaker 2', 'Speaker 3'];
+function transcriptSegmentsFromText(text) {
   const fallbackSentences = splitSentences(text);
+  const chunks = [];
 
-  return fallbackSentences.slice(0, 10).map((sentence, index) => ({
+  for (let index = 0; index < fallbackSentences.length; index += 2) {
+    chunks.push(fallbackSentences.slice(index, index + 2).join(' '));
+  }
+
+  return chunks.slice(0, 10).map((sentence, index) => ({
     id: `seg-${index + 1}`,
-    time: `0${Math.floor(index / 2)}:${String((index % 2) * 30).padStart(2, '0')}`,
-    speaker: speakers[index % speakers.length],
+    time: `${String(Math.floor((index * 18) / 60)).padStart(2, '0')}:${String((index * 18) % 60).padStart(2, '0')}`,
+    speaker: '',
+    speakerLabel: 'Speaker attribution unavailable',
+    attribution: 'unattributed',
     text: sentence,
   }));
 }
@@ -161,6 +168,11 @@ function looksLikePlaceholderTaskTitle(title) {
 
 function transcriptWordCount(text) {
   return normalizedWordList(text).length;
+}
+
+function isRawUploadedMeeting(meeting) {
+  const status = String(meeting?.status || '').trim().toLowerCase();
+  return rawUploadStatusPrefixes.some((prefix) => status.startsWith(prefix));
 }
 
 function transcriptLooksLowSignal(text) {
@@ -236,6 +248,10 @@ function shouldKeepLegacyTask(task, meeting) {
 }
 
 export function shouldKeepLegacyMeeting(meeting, legacyTasks = []) {
+  if (isRawUploadedMeeting(meeting)) {
+    return true;
+  }
+
   const transcript = String(meeting?.transcript || '').trim();
   const title = String(meeting?.title || '').trim();
   const usableTasks = legacyTasks.filter((task) => shouldKeepLegacyTask(task, meeting));
@@ -333,11 +349,19 @@ function weightedOverall({ clarityScore, ownershipScore, executionScore }) {
 }
 
 function summarizeParticipants(participants) {
-  if (participants.length === 0) {
-    return ['Participant roster pending'];
+  return participants;
+}
+
+function parseParticipantsFromRawSummary(summary) {
+  const match = String(summary || '').match(/Participants:\s([^.]*)\./i);
+  if (!match?.[1]) {
+    return [];
   }
 
-  return participants;
+  return match[1]
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
 }
 
 export function transformLegacyMeeting(meeting, legacyTasks = []) {
@@ -345,14 +369,19 @@ export function transformLegacyMeeting(meeting, legacyTasks = []) {
     return null;
   }
 
+  const rawUploaded = isRawUploadedMeeting(meeting);
   const transcriptSegments = transcriptSegmentsFromText(meeting.transcript);
   const aiTitle = String(meeting.title || '').trim() || 'Untitled execution review';
   const summaryParagraph =
     String(meeting.summary || '').trim() || 'Momentum stored the transcript, but the meeting summary still needs a quick review.';
-  const tasks = legacyTasks
-    .filter((task) => shouldKeepLegacyTask(task, meeting))
-    .map((task) => normalizeLegacyTask(task, { id: meeting.id, aiTitle, summaryParagraph }, transcriptSegments));
-  const participants = summarizeParticipants(deriveParticipants(tasks));
+  const tasks = rawUploaded
+    ? []
+    : legacyTasks
+        .filter((task) => shouldKeepLegacyTask(task, meeting))
+        .map((task) => normalizeLegacyTask(task, { id: meeting.id, aiTitle, summaryParagraph }, transcriptSegments));
+  const participants = summarizeParticipants(
+    rawUploaded ? parseParticipantsFromRawSummary(summaryParagraph) : deriveParticipants(tasks)
+  );
   const explicitOwners = tasks.filter((task) => task.owner).length;
   const explicitDeadlines = tasks.filter((task) => task.dueDate).length;
   const clarityScore = Math.max(45, Math.min(98, Number(meeting.clarity || 72)));
@@ -362,24 +391,37 @@ export function transformLegacyMeeting(meeting, legacyTasks = []) {
       ? Math.round(((explicitOwners + explicitDeadlines) / (tasks.length * 2)) * 100)
       : 68;
   const overall = weightedOverall({ clarityScore, ownershipScore, executionScore });
-  const decisions = buildSummaryBullets(summaryParagraph, tasks).slice(0, 3).map((bullet, index) => ({
-    id: `${meeting.id}-decision-${index + 1}`,
-    text: bullet,
-    confidence: 0.68,
-    sourceSnippet: transcriptSegments[index]?.text || summaryParagraph,
-  }));
-  const checklist = tasks.map((task) => ({
-    id: `${task.id}-check`,
-    text: task.title,
-    linkedTaskId: task.id,
-    completed: task.status === 'done',
-  }));
-  const meetingRisks = buildMeetingRisks({
-    tasks,
-    transcriptSegments,
-    clarityScore,
-    executionScore,
-  });
+  const decisions = rawUploaded
+    ? []
+    : buildSummaryBullets(summaryParagraph, tasks).slice(0, 3).map((bullet, index) => ({
+        id: `${meeting.id}-decision-${index + 1}`,
+        text: bullet,
+        confidence: 0.68,
+        sourceSnippet: transcriptSegments[index]?.text || summaryParagraph,
+      }));
+  const checklist = rawUploaded
+    ? []
+    : tasks.map((task) => ({
+        id: `${task.id}-check`,
+        text: task.title,
+        linkedTaskId: task.id,
+        completed: task.status === 'done',
+      }));
+  const meetingRisks = rawUploaded
+    ? [
+        {
+          id: `${meeting.id}-pending-analysis`,
+          type: 'Analysis pending',
+          severity: 'Medium',
+          message: 'Audio is stored, but transcription and extraction have not run yet.',
+        },
+      ]
+    : buildMeetingRisks({
+        tasks,
+        transcriptSegments,
+        clarityScore,
+        executionScore,
+      });
 
   return {
     id: meeting.id,
@@ -389,8 +431,20 @@ export function transformLegacyMeeting(meeting, legacyTasks = []) {
     createdAt: meeting.created_at,
     source: 'Google Meet',
     participants,
-    processingStatus: String(meeting.status || '').toLowerCase().includes('complete') ? 'ready' : 'ready',
-    processingSummary: 'Momentum processed this legacy recording using the original pipeline.',
+    participantRoster: participants.map((participant, index) => ({
+      id: `${meeting.id}-participant-${index + 1}`,
+      displayName: participant,
+      profileId: null,
+      profileName: '',
+      email: '',
+      role: 'guest',
+      matchStatus: 'unmatched',
+      confidence: 0.68,
+    })),
+    processingStatus: rawUploaded ? 'pending-analysis' : 'ready',
+    processingSummary: rawUploaded
+      ? 'Audio is stored safely. Start transcription and extraction from the meeting workspace when ready.'
+      : 'Momentum processed this legacy recording using the original pipeline.',
     summaryParagraph,
     summaryBullets: buildSummaryBullets(summaryParagraph, tasks),
     decisions,
@@ -407,5 +461,10 @@ export function transformLegacyMeeting(meeting, legacyTasks = []) {
     },
     rationale: buildRationale({ clarityScore, ownershipScore, executionScore, tasks }),
     transcriptText: meeting.transcript,
+    transcriptAttribution: 'unattributed',
+    transcriptNotice: rawUploaded
+      ? 'Transcription is not available yet because this recording is still waiting for analysis.'
+      : 'Speaker names are not available for this recording yet, so Momentum is showing an unattributed transcript.',
+    audioUrl: String(meeting.audio_url || '').trim() || null,
   };
 }

@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react';
 import {
+  AudioLines,
   Cpu,
   Database,
   KeyRound,
   PlugZap,
   ShieldCheck,
-  Sparkles,
   Wrench,
 } from 'lucide-react';
-import { apiUrl } from '../lib/api';
+import { apiFetch } from '../lib/api';
 import { isSupabaseConfigured } from '../lib/supabase';
 
 const initialStatus = {
@@ -41,7 +41,7 @@ export default function Settings() {
 
     async function loadStatus() {
       try {
-        const response = await fetch(apiUrl('/api/system-status'), {
+        const response = await apiFetch('/api/system-status', {
           headers: { 'Cache-Control': 'no-store' },
         });
         const payload = await response.json().catch(() => null);
@@ -88,13 +88,13 @@ export default function Settings() {
       <section className="momentum-card momentum-spotlight p-6">
         <div className="momentum-pill-accent">
           <Wrench className="h-4 w-4" />
-          Settings
+          Runtime state
         </div>
         <h1 className="mt-4 text-4xl font-semibold tracking-tight text-slate-950 lg:text-5xl">
-          Product setup and rollout state
+          Inspect what the system can actually do
         </h1>
         <p className="mt-4 max-w-3xl text-base leading-8 text-slate-600">
-          This view now reflects the real backend posture more closely: what the server can do today, what schema path is active, and whether the extension can be tied to a workspace cleanly.
+          This page should stay plainspoken. It exists to show whether the backend is ready, whether routing is trustworthy, and which parts of the meeting pipeline still have hard limitations.
         </p>
         <div className="momentum-card-soft mt-5 px-4 py-4 text-sm text-slate-700">
           {loading ? 'Checking server rollout state...' : status.summary}
@@ -115,24 +115,24 @@ export default function Settings() {
             label: 'Schema path',
             title: v2Ready ? 'V2 schema detected' : 'Legacy path active',
             body: v2Ready
-              ? 'Workspace tables, transcript segments, risk flags, and richer tasks are visible to the API.'
-              : 'The server is still reading the original meetings/tasks shape on this deployment.',
+              ? 'Workspace-scoped meeting tables are reachable.'
+              : 'The deployment is still serving the original meetings/tasks shape.',
             icon: Database,
           },
           {
             label: 'Server admin',
             title: yesNo(status.env.hasServiceRoleKey, 'Service role present', 'Service role missing'),
             body: status.env.hasServiceRoleKey
-              ? 'This server can perform privileged rollout work and storage operations.'
-              : 'This server is still running without a service-role key, so rollout remains limited.',
+              ? 'This server can perform privileged rollout and storage work.'
+              : 'This server is still running without a service-role key.',
             icon: KeyRound,
           },
           {
             label: 'AI runtime',
             title: yesNo(aiReady, 'Transcription + extraction ready', 'AI keys incomplete'),
             body: aiReady
-              ? 'Groq Whisper and Gemini Flash are available to the API.'
-              : 'One or more AI keys are missing, so the upload flow may fall back to raw storage only.',
+              ? 'Groq Whisper and Gemini are available to the API.'
+              : 'One or more AI keys are missing, so the upload path may fall back to raw audio storage only.',
             icon: Cpu,
           },
         ].map((card) => {
@@ -158,38 +158,24 @@ export default function Settings() {
         <div className="momentum-card p-6">
           <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
             <Database className="h-4 w-4 text-sky-600" />
-            Backend rollout
+            Backend readiness
           </div>
           <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">
-            What the server can do right now
+            What the server can handle right now
           </h2>
           <div className="mt-5 space-y-3 text-sm leading-7 text-slate-600">
             <div className="momentum-card-soft px-4 py-4">
-              Supabase environment:
-              {' '}
-              {yesNo(serverReady, 'available to the API.', 'still incomplete on this runtime.')}
+              Supabase environment: {yesNo(serverReady, 'available to the API.', 'still incomplete on this runtime.')}
             </div>
             <div className="momentum-card-soft px-4 py-4">
-              Schema mode:
-              {' '}
-              {v2Ready ? 'V2 workspace tables are reachable.' : 'the deployment is still serving the legacy schema path.'}
+              Schema mode: {v2Ready ? 'workspace-scoped V2 tables are active.' : 'the server is still reading the legacy schema path.'}
             </div>
             <div className="momentum-card-soft px-4 py-4">
-              Extension connection table:
-              {' '}
+              Extension connection table:{' '}
               {yesNo(
                 status.schema.extensionConnectionsAvailable,
                 `${status.schema.extensionConnectionCount} saved connection${status.schema.extensionConnectionCount === 1 ? '' : 's'} detected.`,
                 'not reachable yet on this deployment.'
-              )}
-            </div>
-            <div className="momentum-card-soft px-4 py-4">
-              Workspace readiness:
-              {' '}
-              {yesNo(
-                status.schema.mode !== 'unavailable',
-                'the server can resolve a real workspace schema path.',
-                'the server schema is not reachable on this deployment.'
               )}
             </div>
           </div>
@@ -198,24 +184,20 @@ export default function Settings() {
         <div className="momentum-card p-6">
           <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
             <PlugZap className="h-4 w-4 text-amber-600" />
-            Extension workspace link
+            Workspace routing
           </div>
           <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">
-            How uploads should be tied to a workspace
+            How uploads should find the right workspace
           </h2>
           <div className="mt-5 space-y-3 text-sm leading-7 text-slate-600">
             <div className="rounded-[24px] border border-sky-200 bg-sky-50 px-4 py-4">
-              The extension popup now has a dedicated Workspace link section for `workspace_id`, `user_id`, and `connection token`.
+              Best path: signed-in dashboard requests use the workspace from the authenticated session, and extension uploads use a saved connection token when available.
             </div>
             <div className="momentum-card-soft px-4 py-4">
-              Best path:
-              {' '}
-              save a connection token when the V2 schema is live, so uploads route into the right workspace without trusting raw client IDs alone.
+              The extension popup can still store `workspace_id`, `user_id`, and a connection token when you want explicit routing from the browser side.
             </div>
             <div className="momentum-card-soft px-4 py-4">
-              Safe fallback:
-              {' '}
-              if no token is saved, Momentum can still upload, but routing is less strict and should be treated as demo-safe rather than production-safe.
+              If a token is missing, uploads can still succeed, but routing is less strict than a token-backed workspace connection.
             </div>
           </div>
         </div>
@@ -224,18 +206,21 @@ export default function Settings() {
       <section className="grid gap-6 xl:grid-cols-2">
         <div className="momentum-card p-6">
           <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
-            <Sparkles className="h-4 w-4 text-amber-600" />
-            Watermelon strategy
+            <AudioLines className="h-4 w-4 text-amber-700" />
+            Transcript honesty
           </div>
           <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">
-            Subtle, not copy-paste
+            Limits the product should state clearly
           </h2>
           <div className="mt-5 space-y-3 text-sm leading-7 text-slate-600">
-            <div className="momentum-card-soft px-4 py-4">
-              The current UI borrows sharper navigation treatment, premium card density, and richer status surfaces without making the app feel like a cloned template.
+            <div className="rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-4">
+              Speaker attribution should only appear when the system has real speaker-level evidence. Otherwise the transcript must remain unattributed.
             </div>
             <div className="momentum-card-soft px-4 py-4">
-              The judge-facing screens that benefit most are already the shell, overview, meetings, meeting detail, tasks, analytics, and upload flow.
+              Task owners can be matched to workspace people when names align, but the UI should still surface review states when ownership is uncertain.
+            </div>
+            <div className="momentum-card-soft px-4 py-4">
+              Raw audio retention should stay temporary, with transcript and structured outputs as the main long-term records.
             </div>
           </div>
         </div>
@@ -245,17 +230,17 @@ export default function Settings() {
             Privacy and trust
           </div>
           <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">
-            What the UX should keep saying
+            The product promise
           </h2>
           <div className="mt-5 space-y-3 text-sm leading-7 text-slate-600">
             <div className="rounded-[24px] border border-emerald-200 bg-emerald-50 px-4 py-4">
-              "Momentum records this meeting only after you start it."
+              “Momentum records this meeting only after you start it.”
             </div>
             <div className="momentum-card-soft px-4 py-4">
-              Avoid promising perfect transcription or perfect owner resolution. The right promise is evidence, reviewability, and faster execution.
+              The strongest promise is not perfection. It is evidence, reviewability, and faster correction when the AI gets something almost right.
             </div>
             <div className="momentum-card-soft px-4 py-4">
-              Raw audio retention should stay temporary, with transcript and structured outputs as the primary long-term records.
+              If the runtime or routing is incomplete, this screen should say that directly instead of masking it with marketing language.
             </div>
           </div>
         </div>
