@@ -1,9 +1,26 @@
-import { cleanParticipantDisplayName } from './people-directory';
-
 const reviewTokens = ['unclear', 'unknown', 'someone', 'missing', 'tbd'];
 const sentenceSplitPattern = /(?<=[.!?])\s+/;
 const rawUploadStatusPrefixes = ['raw-uploaded:', 'audio-uploaded:'];
 const legacyMetadataMarker = '[MOMENTUM_META]';
+const participantNoisePatterns = [
+  /\bmic\b/i,
+  /\bmicrophone\b/i,
+  /\bcamera\b/i,
+  /\bvideocam\b/i,
+  /\bleft side panel\b/i,
+  /\bside panel\b/i,
+  /\bmeeting details\b/i,
+  /\bmeeting tools\b/i,
+  /\bmore actions\b/i,
+  /\bhost controls\b/i,
+  /\bcaptions\b/i,
+  /\bapps\b/i,
+  /\bpeople\b/i,
+  /\bchat\b/i,
+  /\braise hand\b/i,
+  /\bleave meeting\b/i,
+  /\bend call\b/i,
+];
 const placeholderMeetingTitles = [
   'brief interaction',
   'brief exchange',
@@ -70,6 +87,28 @@ function splitSentences(text) {
     .split(sentenceSplitPattern)
     .map((sentence) => sentence.trim())
     .filter(Boolean);
+}
+
+function cleanParticipantDisplayName(value) {
+  let text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!text || text.includes('@') || /\d{4,}/.test(text)) {
+    return '';
+  }
+
+  if (participantNoisePatterns.some((pattern) => pattern.test(text))) {
+    return '';
+  }
+
+  const repeatedLabelMatch = text.match(/^(.+?)\s*\1$/i);
+  if (repeatedLabelMatch?.[1]) {
+    text = repeatedLabelMatch[1].trim();
+  }
+
+  if (participantNoisePatterns.some((pattern) => pattern.test(text))) {
+    return '';
+  }
+
+  return text;
 }
 
 function normalizedWordList(text) {
