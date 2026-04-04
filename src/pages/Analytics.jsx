@@ -1,6 +1,8 @@
-import { AlertTriangle, BarChart3, Gauge, Users, KeyRound, ShieldCheck, Database, PlugZap, Cpu, Wrench, FileText } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { AlertTriangle, BarChart3, Gauge, Users, FileText, Pencil, Trash2, X } from 'lucide-react';
 import { useWorkspace } from '../components/workspace/useWorkspace';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
+import { updateWorkspaceParticipant } from '../lib/workspace-data';
 
 function barColor(score) {
   if (score >= 80) return 'bg-emerald-500';
@@ -23,9 +25,162 @@ function meetingHasTranscriptText(meeting) {
 }
 
 export default function Analytics() {
-  const { snapshot } = useWorkspace();
+  const { snapshot, refresh } = useWorkspace();
   const { analytics, meetings, people } = snapshot;
   const transcriptReadyMeetings = meetings.filter(meetingHasTranscriptText).length;
+  const [personModal, setPersonModal] = useState({
+    open: false,
+    personId: '',
+    displayName: '',
+    draftName: '',
+    isWorkspaceMember: false,
+  });
+  const [savingPerson, setSavingPerson] = useState(false);
+  const [deletingPerson, setDeletingPerson] = useState(false);
+  const [surfaceError, setSurfaceError] = useState('');
+
+  const selectedPerson = useMemo(
+    () => (people || []).find((person) => person.id === personModal.personId) || null,
+    [people, personModal.personId]
+  );
+
+  function normalizePersonKey(value) {
+    return String(value || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9\s'.-]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function buildMeetingRefsForPerson(personName) {
+    const targetKey = normalizePersonKey(personName);
+    if (!targetKey) {
+      return [];
+    }
+
+    const refs = [];
+
+    (meetings || []).forEach((meeting) => {
+      const rosterMatch = (meeting?.participantRoster || []).find(
+        (participant) => normalizePersonKey(participant?.displayName) === targetKey
+      );
+
+      const participantMatch = (meeting?.participants || []).some(
+        (name) => normalizePersonKey(name) === targetKey
+      );
+
+      const taskOwnerMatch = (meeting?.tasks || []).some(
+        (task) => normalizePersonKey(task?.owner) === targetKey
+      );
+
+      if (!rosterMatch && !participantMatch && !taskOwnerMatch) {
+        return;
+      }
+
+      refs.push({
+        meetingId: meeting.id,
+        participantId: rosterMatch?.id || '',
+      });
+    });
+
+    return refs;
+  }
+
+  function openPersonModal(person) {
+    setSurfaceError('');
+    setPersonModal({
+      open: true,
+      personId: person.id,
+      displayName: String(person.displayName || '').trim(),
+      draftName: String(person.displayName || '').trim(),
+      isWorkspaceMember: Boolean(person.isWorkspaceMember),
+    });
+  }
+
+  function closePersonModal() {
+    if (savingPerson || deletingPerson) {
+      return;
+    }
+
+    setPersonModal({
+      open: false,
+      personId: '',
+      displayName: '',
+      draftName: '',
+      isWorkspaceMember: false,
+    });
+  }
+
+  async function applyPersonMutation({ removePerson }) {
+    const currentName = String(personModal.displayName || '').trim();
+    const nextName = String(personModal.draftName || '').trim();
+
+    if (!currentName) {
+      setSurfaceError('Person name is required.');
+      return;
+    }
+
+    if (!removePerson && !nextName) {
+      setSurfaceError('New person name cannot be empty.');
+      return;
+    }
+
+    const refs = buildMeetingRefsForPerson(currentName);
+    if (refs.length === 0) {
+      setSurfaceError('No meeting references were found for this person.');
+      return;
+    }
+
+    if (removePerson) {
+      setDeletingPerson(true);
+    } else {
+      setSavingPerson(true);
+    }
+    setSurfaceError('');
+
+    try {
+      const results = await Promise.allSettled(
+        refs.map((ref) =>
+          updateWorkspaceParticipant({
+            meetingId: ref.meetingId,
+            participantId: ref.participantId,
+            currentName,
+            displayName: nextName,
+            removeParticipant: removePerson,
+          })
+        )
+      );
+
+      const failure = results.find((result) => result.status === 'rejected');
+      if (failure) {
+        throw failure.reason || new Error('Momentum could not update this person everywhere.');
+      }
+
+      closePersonModal();
+      await refresh({ silent: true });
+    } catch (error) {
+      setSurfaceError(error.message || 'Momentum could not update this person.');
+    } finally {
+      if (removePerson) {
+        setDeletingPerson(false);
+      } else {
+        setSavingPerson(false);
+      }
+    }
+  }
+
+  async function handleRenamePerson() {
+    await applyPersonMutation({ removePerson: false });
+  }
+
+  async function handleDeletePerson() {
+    const confirmed = window.confirm(`Remove ${personModal.displayName || 'this person'} from all meeting rosters and task ownership?`);
+    if (!confirmed) {
+      return;
+    }
+
+    await applyPersonMutation({ removePerson: true });
+  }
 
   return (
     <motion.div 
@@ -34,6 +189,19 @@ export default function Analytics() {
       variants={{ visible: { transition: { staggerChildren: 0.1 } } }}
       className="p-6 md:p-8 xl:p-12 max-w-[1600px] mx-auto space-y-8 min-h-screen"
     >
+      <AnimatePresence>
+        {surfaceError && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="p-4 rounded-2xl bg-destructive/10 border border-destructive/20 text-destructive text-sm font-semibold shadow-sm"
+          >
+            {surfaceError}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <motion.section variants={fadeUp} className="vibrant-panel p-8 md:p-10 relative overflow-hidden group">
         <div className="absolute top-0 right-0 p-12 opacity-10 pointer-events-none">
           <BarChart3 className="w-64 h-64 scale-150 rotate-12 text-white" />
@@ -180,7 +348,12 @@ export default function Analytics() {
           </h2>
           <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
             {(people || []).slice(0, 8).map((person) => (
-              <div key={person.id} className="rounded-2xl bg-secondary/50 hover:bg-card border border-border p-4 transition-colors">
+              <button
+                key={person.id}
+                type="button"
+                onClick={() => openPersonModal(person)}
+                className="w-full text-left rounded-2xl bg-secondary/50 hover:bg-card border border-border p-4 transition-colors"
+              >
                 <div className="flex flex-col gap-2">
                   <div className="min-w-0">
                     <div className="text-sm font-bold text-foreground truncate">{person.displayName}</div>
@@ -197,7 +370,7 @@ export default function Analytics() {
                     </span>
                   </div>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -227,6 +400,83 @@ export default function Analytics() {
           </div>
         </div>
       </motion.section>
+
+      <AnimatePresence>
+        {personModal.open && selectedPerson && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-background/65 backdrop-blur-sm p-4"
+            onClick={closePersonModal}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 12, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.98 }}
+              className="w-full max-w-md rounded-3xl border border-border bg-card p-6 shadow-2xl"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-3 mb-4">
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-muted-foreground mb-1">
+                    Person Actions
+                  </div>
+                  <h3 className="text-xl font-extrabold tracking-tight text-foreground leading-tight">
+                    {selectedPerson.displayName}
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={closePersonModal}
+                  className="rounded-xl border border-border bg-background p-2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {personModal.isWorkspaceMember ? (
+                <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm font-medium text-amber-700 dark:text-amber-400">
+                  This person is a workspace member. Rename or removal is managed from workspace account settings.
+                </div>
+              ) : (
+                <>
+                  <label className="block text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2">
+                    Rename Person
+                  </label>
+                  <input
+                    value={personModal.draftName}
+                    onChange={(event) => setPersonModal((current) => ({ ...current, draftName: event.target.value }))}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    placeholder="Person name"
+                  />
+
+                  <div className="mt-5 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleRenamePerson}
+                      disabled={savingPerson || deletingPerson}
+                      className="button-primary text-xs"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      {savingPerson ? 'Saving...' : 'Rename Person'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDeletePerson}
+                      disabled={savingPerson || deletingPerson}
+                      className="inline-flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-bold text-destructive hover:bg-destructive/15 disabled:opacity-60"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      {deletingPerson ? 'Deleting...' : 'Delete Person'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
