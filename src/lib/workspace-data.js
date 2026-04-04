@@ -373,6 +373,8 @@ function normalizeApiMeeting(meeting) {
     decisions: meeting?.decisions,
     tasks: meeting?.tasks,
     participants,
+    meetingCode: meeting?.sourceMeetingCode || meeting?.source_meeting_code,
+    meetingLabel: meeting?.rawTitle,
   });
   const aiTitle = resolveMeetingTitle({
     candidates: [meeting?.aiTitle, meeting?.rawTitle],
@@ -381,6 +383,7 @@ function normalizeApiMeeting(meeting) {
     decisions: meeting?.decisions,
     tasks: meeting?.tasks,
     participants,
+    meetingCode: meeting?.sourceMeetingCode || meeting?.source_meeting_code,
   });
   const rawTitle = pickFirstUsableLabel(meeting?.rawTitle, meeting?.aiTitle) || aiTitle;
 
@@ -514,11 +517,23 @@ function looksLikeTranscriptMirror(summaryText, transcriptText) {
   return positionalMatches / summaryTokens.length >= 0.72;
 }
 
-function buildDisplaySummaryParagraph({ summaryParagraph, transcriptText, decisions = [], tasks = [], participants = [] }) {
+function buildDisplaySummaryParagraph({
+  summaryParagraph,
+  transcriptText,
+  decisions = [],
+  tasks = [],
+  participants = [],
+  meetingCode = '',
+  meetingLabel = '',
+}) {
   const normalizedSummary = normalizeComparableText(summaryParagraph);
   const normalizedTranscript = normalizeComparableText(transcriptText);
 
-  if (normalizedSummary && !looksLikeTranscriptMirror(normalizedSummary, normalizedTranscript)) {
+  if (
+    normalizedSummary
+    && !looksLikeTranscriptMirror(normalizedSummary, normalizedTranscript)
+    && !isBoilerplateSummary(normalizedSummary)
+  ) {
     return String(summaryParagraph || '').trim();
   }
 
@@ -547,11 +562,60 @@ function buildDisplaySummaryParagraph({ summaryParagraph, transcriptText, decisi
       : `The team aligned on execution priorities and captured ${tasks.length} follow-up action item${tasks.length === 1 ? '' : 's'}.`;
   }
 
+  const transcriptContext = extractTranscriptContext(transcriptText);
+  if (transcriptContext) {
+    if (participants.length > 1) {
+      return `${participants.slice(0, 2).join(' and ')} discussed ${transcriptContext}. No actionable tasks were confidently extracted yet.`;
+    }
+
+    return `The discussion focused on ${transcriptContext}. No actionable tasks were confidently extracted yet.`;
+  }
+
   if (participants.length > 1) {
     return `${participants.slice(0, 2).join(' and ')} discussed key updates and next steps during this meeting.`;
   }
 
+  if (meetingLabel || meetingCode) {
+    const reference = String(meetingLabel || meetingCode || '').trim();
+    return `This meeting centered on ${reference}. Momentum captured the recording, but signal was not strong enough to extract rich action context.`;
+  }
+
   return 'Momentum captured this meeting and generated a concise executive summary from the available signal.';
+}
+
+function isBoilerplateSummary(normalizedSummary) {
+  const templates = [
+    'momentum captured this meeting and generated a concise executive summary from the available signal',
+    'momentum processed this meeting using the v2 pipeline',
+    'transcript processed successfully',
+  ];
+
+  return templates.some((template) => normalizedSummary === template);
+}
+
+function extractTranscriptContext(transcriptText) {
+  const sentence = String(transcriptText || '')
+    .replace(/\s+/g, ' ')
+    .split(/(?<=[.!?])\s+/)
+    .map((part) => part.trim())
+    .find((part) => part.split(' ').length >= 7);
+
+  if (!sentence) {
+    return '';
+  }
+
+  const trimmed = sentence.replace(/[.!?]+$/, '').trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  const compact = trimmed
+    .split(' ')
+    .slice(0, 18)
+    .join(' ')
+    .trim();
+
+  return compact || '';
 }
 
 function isUsableMeetingTitle(value) {
@@ -562,6 +626,15 @@ function isUsableMeetingTitle(value) {
 
   const normalized = title.toLowerCase();
   if (genericMeetingTitles.has(normalized)) {
+    return false;
+  }
+
+  if (/^meeting\s+review\s+for\s+/i.test(normalized)) {
+    return false;
+  }
+
+  const meetingCodeOnly = normalized.match(/\b[a-z]{3}-[a-z]{4}-[a-z]{3}\b/i);
+  if (meetingCodeOnly && normalized.replace(meetingCodeOnly[0].toLowerCase(), '').trim().split(' ').length <= 2) {
     return false;
   }
 
@@ -612,7 +685,15 @@ function pickFirstUsableLabel(...values) {
   return '';
 }
 
-function resolveMeetingTitle({ candidates = [], summaryParagraph, transcriptText, decisions = [], tasks = [], participants = [] }) {
+function resolveMeetingTitle({
+  candidates = [],
+  summaryParagraph,
+  transcriptText,
+  decisions = [],
+  tasks = [],
+  participants = [],
+  meetingCode = '',
+}) {
   const existingTitle = pickFirstUsableLabel(...candidates);
   if (existingTitle) {
     return existingTitle;
@@ -638,8 +719,16 @@ function resolveMeetingTitle({ candidates = [], summaryParagraph, transcriptText
     return transcriptTitle;
   }
 
+  if (participants.length > 1) {
+    return `Team Sync: ${participants.slice(0, 2).join(' & ')}`;
+  }
+
   if (participants.length > 0) {
     return `Discussion with ${participants[0]}`;
+  }
+
+  if (meetingCode) {
+    return `Google Meet Check-in (${String(meetingCode).toUpperCase()})`;
   }
 
   return 'Meeting Summary';

@@ -344,7 +344,12 @@ export function buildFallbackAnalysis(transcript, sourceMetadata = {}) {
   const summarySentences = transcriptLooksLowSignal
     ? []
     : sentences.slice(0, Math.min(4, Math.max(2, sentences.length)));
-  const summaryParagraph = buildFallbackSummary(summarySentences, fallbackTasks.length, transcriptLooksLowSignal);
+  const summaryParagraph = buildFallbackSummary(
+    summarySentences,
+    fallbackTasks.length,
+    transcriptLooksLowSignal,
+    sourceMetadata
+  );
   const summaryBullets = summarySentences.slice(0, 4);
   const tasks = fallbackTasks.map((task) => ({
     ...task,
@@ -368,7 +373,7 @@ export function buildFallbackAnalysis(transcript, sourceMetadata = {}) {
 
   return normalizeAnalysis(
     {
-      title: buildFallbackTitle(sentences, sourceMetadata.meetingCode),
+      title: buildFallbackTitle(sentences, sourceMetadata),
       summary_paragraph: summaryParagraph,
       summary_bullets: summaryBullets,
       decisions: buildFallbackDecisions(summarySentences),
@@ -759,10 +764,24 @@ function normalizeRiskFlags(riskFlags, tasks, transcript, ownerResolutionRisks =
   ]).slice(0, 10);
 }
 
-function buildFallbackTitle(sentences, meetingCode) {
-  const sanitizedCode = sanitizeMeetingCode(meetingCode);
+function buildFallbackTitle(sentences, sourceMetadata = {}) {
+  const participantNames = dedupeNames(sourceMetadata?.participantNames || []);
+  if (participantNames.length > 1) {
+    return `Team Sync: ${participantNames.slice(0, 2).join(' & ')}`;
+  }
+
+  if (participantNames.length === 1) {
+    return `Discussion with ${participantNames[0]}`;
+  }
+
+  const meetingLabel = sanitizeOptionalField(sourceMetadata?.meetingLabel);
+  if (meetingLabel && !/^meeting\s+review\s+for\s+/i.test(meetingLabel)) {
+    return meetingLabel;
+  }
+
+  const sanitizedCode = sanitizeMeetingCode(sourceMetadata?.meetingCode);
   if (sanitizedCode) {
-    return `Meeting review for ${sanitizedCode}`;
+    return `Google Meet Check-in (${sanitizedCode.toUpperCase()})`;
   }
 
   const firstSentence = sentences[0] || 'Meeting Summary';
@@ -776,9 +795,18 @@ function buildFallbackTitle(sentences, meetingCode) {
   return title || 'Meeting Summary';
 }
 
-function buildFallbackSummary(summarySentences, taskCount, transcriptLooksLowSignal) {
+function buildFallbackSummary(summarySentences, taskCount, transcriptLooksLowSignal, sourceMetadata = {}) {
+  const participantNames = dedupeNames(sourceMetadata?.participantNames || []);
+  const participantLead = participantNames.length > 1
+    ? `${participantNames[0]} and ${participantNames[1]}`
+    : participantNames[0] || '';
+
   if (transcriptLooksLowSignal) {
-    return 'Momentum captured the audio file, but the transcript contained too little clear speech for a reliable summary.';
+    if (participantLead) {
+      return `${participantLead} had a brief check-in. Momentum captured the audio file, but transcript signal was too limited for a high-confidence executive summary.`;
+    }
+
+    return 'Momentum captured the audio file, but transcript signal was too limited for a high-confidence executive summary.';
   }
 
   const summary = summarySentences.join(' ').trim();
@@ -786,6 +814,10 @@ function buildFallbackSummary(summarySentences, taskCount, transcriptLooksLowSig
     return taskCount > 0
       ? `${summary} Momentum also identified ${taskCount} follow-up item${taskCount === 1 ? '' : 's'}.`
       : summary;
+  }
+
+  if (participantLead) {
+    return `${participantLead} discussed meeting updates, but the fallback analysis had limited context to extract detailed outcomes.`;
   }
 
   return 'Transcript processed successfully, but the AI fallback summary had limited detail to work with.';

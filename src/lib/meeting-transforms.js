@@ -522,6 +522,15 @@ function isUsableMeetingTitle(value) {
     return false;
   }
 
+  if (/^meeting\s+review\s+for\s+/i.test(normalized)) {
+    return false;
+  }
+
+  const meetingCodeOnly = normalized.match(/\b[a-z]{3}-[a-z]{4}-[a-z]{3}\b/i);
+  if (meetingCodeOnly && normalized.replace(meetingCodeOnly[0].toLowerCase(), '').trim().split(' ').length <= 2) {
+    return false;
+  }
+
   const compact = normalized.replace(/[^a-z0-9]/g, '');
   if (!compact) {
     return false;
@@ -590,6 +599,10 @@ function resolveLegacyMeetingTitle({ candidates = [], transcriptText, summaryPar
     return transcriptTitle;
   }
 
+  if (tasks.length > 0) {
+    return 'Execution Planning Sync';
+  }
+
   return 'Meeting Summary';
 }
 
@@ -597,7 +610,11 @@ function buildDisplaySummaryParagraph({ summaryParagraph, transcriptText, tasks 
   const normalizedSummary = normalizeComparableText(summaryParagraph);
   const normalizedTranscript = normalizeComparableText(transcriptText);
 
-  if (normalizedSummary && !looksLikeTranscriptMirror(normalizedSummary, normalizedTranscript)) {
+  if (
+    normalizedSummary
+    && !looksLikeTranscriptMirror(normalizedSummary, normalizedTranscript)
+    && !isBoilerplateSummary(normalizedSummary)
+  ) {
     return summaryParagraph;
   }
 
@@ -613,7 +630,44 @@ function buildDisplaySummaryParagraph({ summaryParagraph, transcriptText, tasks 
       : `The team aligned on execution priorities and captured ${tasks.length} follow-up action item${tasks.length === 1 ? '' : 's'}.`;
   }
 
+  const transcriptContext = extractTranscriptContext(transcriptText);
+  if (transcriptContext) {
+    return `The discussion focused on ${transcriptContext}. No actionable tasks were confidently extracted yet.`;
+  }
+
   return 'Momentum captured this meeting and generated a concise executive summary from the available signal.';
+}
+
+function isBoilerplateSummary(normalizedSummary) {
+  const templates = [
+    'momentum captured this meeting and generated a concise executive summary from the available signal',
+    'transcript processed successfully',
+  ];
+
+  return templates.some((template) => normalizedSummary === template);
+}
+
+function extractTranscriptContext(transcriptText) {
+  const sentence = String(transcriptText || '')
+    .replace(/\s+/g, ' ')
+    .split(/(?<=[.!?])\s+/)
+    .map((part) => part.trim())
+    .find((part) => part.split(' ').length >= 7);
+
+  if (!sentence) {
+    return '';
+  }
+
+  const trimmed = sentence.replace(/[.!?]+$/, '').trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  return trimmed
+    .split(' ')
+    .slice(0, 18)
+    .join(' ')
+    .trim();
 }
 
 function firstValidDateValue(...values) {
