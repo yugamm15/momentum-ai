@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useMemo, useState } from 'react';
 import { ArrowRight, AudioLines, Search, Users, Activity, Filter, Lock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -32,7 +32,7 @@ export default function Meetings() {
   const { snapshot } = useWorkspace();
   const [query, setQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('All Variants');
-  const [currentPage, setCurrentPage] = useState(1);
+  const [pageRequest, setPageRequest] = useState(1);
   const deferredQuery = useDeferredValue(query);
 
   const summary = useMemo(() => {
@@ -74,21 +74,12 @@ export default function Meetings() {
   }, [activeFilter, deferredQuery, snapshot.meetings]);
 
   const totalPages = Math.max(1, Math.ceil(meetings.length / ITEMS_PER_PAGE));
+  const currentPage = Math.min(pageRequest, totalPages);
 
   const paginatedMeetings = useMemo(() => {
     const start = (currentPage - 1) * ITEMS_PER_PAGE;
     return meetings.slice(start, start + ITEMS_PER_PAGE);
   }, [currentPage, meetings]);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [activeFilter, deferredQuery]);
-
-  useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(totalPages);
-    }
-  }, [currentPage, totalPages]);
 
   return (
     <motion.div 
@@ -123,7 +114,10 @@ export default function Meetings() {
             <input
               type="text"
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setPageRequest(1);
+              }}
               placeholder="Search meetings, people, or transcripts..."
               className="w-full bg-card border border-border rounded-2xl py-4 pl-12 pr-4 text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all shadow-sm font-medium"
             />
@@ -157,7 +151,10 @@ export default function Meetings() {
             {filterOptions.map((option) => (
               <button
                 key={option}
-                onClick={() => setActiveFilter(option)}
+                onClick={() => {
+                  setActiveFilter(option);
+                  setPageRequest(1);
+                }}
                 className={`shrink-0 snap-start px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest transition-all ${
                   activeFilter === option
                     ? 'bg-foreground text-background shadow-md'
@@ -249,7 +246,7 @@ export default function Meetings() {
         </div>
 
         {meetings.length > 0 && totalPages > 1 && (
-          <PaginationControl totalPages={totalPages} value={currentPage} onChange={setCurrentPage} />
+          <PaginationControl totalPages={totalPages} value={currentPage} onChange={setPageRequest} />
         )}
 
         {meetings.length === 0 && (

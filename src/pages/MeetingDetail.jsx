@@ -75,7 +75,6 @@ export default function MeetingDetail() {
   });
   const [savingParticipant, setSavingParticipant] = useState(false);
   const [removingParticipant, setRemovingParticipant] = useState(false);
-  const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState('');
   const [asking, setAsking] = useState(false);
   const [processingStored, setProcessingStored] = useState(false);

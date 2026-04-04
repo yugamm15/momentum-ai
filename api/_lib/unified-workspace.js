@@ -2070,7 +2070,7 @@ function isBoilerplateSummary(normalizedSummary) {
   return templates.some((template) => normalizedSummary === template);
 }
 
-function extractTranscriptContext(transcriptText) {
+function _extractTranscriptContext(transcriptText) {
   const sentence = String(transcriptText || '')
     .replace(/\s+/g, ' ')
     .split(/(?<=[.!?])\s+/)

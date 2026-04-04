@@ -6,11 +6,7 @@ import {
   useMotionValueEvent,
   AnimatePresence,
 } from 'framer-motion';
-import {
-  TbPlayerPauseFilled,
-  TbPlayerPlayFilled,
-  TbRotateClockwise2,
-} from 'react-icons/tb';
+import { Pause, Play, RotateCw } from 'lucide-react';
 
 const DEFAULT_WAVEFORM = [
   4, 7, 9, 6, 11, 14, 12, 8, 5, 10, 15, 13, 11, 9, 6, 10, 12, 9, 7, 5, 8, 12,
@@ -145,11 +141,11 @@ export default function WaveformScrub({
                   className="z-20 shrink-0 cursor-pointer text-foreground/75"
                 >
                   {isFinished ? (
-                    <TbRotateClockwise2 size={22} />
+                    <RotateCw className="h-[22px] w-[22px]" />
                   ) : isPlaying ? (
-                    <TbPlayerPauseFilled size={22} />
+                    <Pause className="h-[22px] w-[22px]" />
                   ) : (
-                    <TbPlayerPlayFilled size={22} />
+                    <Play className="h-[22px] w-[22px]" />
                   )}
                 </motion.button>
               </AnimatePresence>

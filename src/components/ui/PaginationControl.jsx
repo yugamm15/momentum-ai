@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
@@ -34,12 +34,6 @@ export default function PaginationControl({
   const [direction, setDirection] = useState(0);
 
   const currentPage = Math.min(totalPages, Math.max(1, isControlled ? value : internalPage));
-
-  useEffect(() => {
-    if (!isControlled && internalPage > totalPages) {
-      setInternalPage(totalPages);
-    }
-  }, [internalPage, isControlled, totalPages]);
 
   function paginate(dir) {
     const next = Math.min(totalPages, Math.max(1, currentPage + dir));
