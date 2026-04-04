@@ -12,23 +12,23 @@
     --card-foreground: 240 10% 4%;
     --popover: 0 0% 100%;
     --popover-foreground: 240 10% 4%;
-    --primary: 340 82% 52%; /* Vibrant Watermelon Pink/Red */
+    --primary: 217 100% 50%; /* Vibrant Blue */
     --primary-foreground: 0 0% 98%;
     --secondary: 240 5% 96%;
     --secondary-foreground: 240 6% 10%;
     --muted: 240 5% 96%;
     --muted-foreground: 240 4% 46%;
-    --accent: 340 82% 52%;
+    --accent: 217 100% 50%;
     --accent-foreground: 240 6% 10%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 98%;
     --border: 240 6% 90%;
     --input: 240 6% 90%;
-    --ring: 340 82% 52%;
+    --ring: 217 100% 50%;
     --radius: 1rem;
     
     /* Vibrant gradients for light mode */
-    --brand-gradient: linear-gradient(135deg, #ff4b72 0%, #ff7eb3 100%);
+    --brand-gradient: linear-gradient(135deg, #0066ff 0%, #3399ff 100%);
     --surface-gradient: linear-gradient(180deg, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.4) 100%);
   }
 
@@ -39,22 +39,22 @@
     --card-foreground: 0 0% 98%;
     --popover: 240 10% 6%;
     --popover-foreground: 0 0% 98%;
-    --primary: 340 82% 52%;
+    --primary: 217 100% 50%;
     --primary-foreground: 0 0% 98%;
     --secondary: 240 5% 12%;
     --secondary-foreground: 0 0% 98%;
     --muted: 240 5% 12%;
     --muted-foreground: 240 5% 65%;
-    --accent: 340 82% 52%;
+    --accent: 217 100% 50%;
     --accent-foreground: 0 0% 98%;
     --destructive: 0 63% 31%;
     --destructive-foreground: 0 0% 98%;
     --border: 240 5% 16%;
     --input: 240 5% 16%;
-    --ring: 340 82% 52%;
+    --ring: 217 100% 50%;
 
     /* Vibrant gradients for dark mode */
-    --brand-gradient: linear-gradient(135deg, #ff4b72 0%, #ff2a5f 100%);
+    --brand-gradient: linear-gradient(135deg, #0066ff 0%, #0052cc 100%);
     --surface-gradient: linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.01) 100%);
   }
 }

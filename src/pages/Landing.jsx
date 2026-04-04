@@ -16,6 +16,7 @@ import {
 import { motion, useScroll, useTransform } from 'framer-motion';
 import { useRef } from 'react';
 import { Link } from 'react-router-dom';
+import MomentumLogo from '../components/MomentumLogo';
 
 const fadeIn = {
   hidden: { opacity: 0, y: 20 },
@@ -92,34 +93,32 @@ export default function Landing({ session }) {
       <div className="fixed inset-0 z-0 pointer-events-none">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-primary/10 via-transparent to-transparent opacity-60 dark:opacity-100" />
         <div className="absolute inset-0 cinematic-grid opacity-10 dark:opacity-30" />
-        <motion.div 
+        <motion.div
           animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.5, 0.3] }}
           transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute -top-[20%] -left-[10%] w-[50%] h-[50%] bg-blue-500/10 blur-[120px] rounded-full" 
+          className="absolute -top-[20%] -left-[10%] w-[50%] h-[50%] bg-blue-500/10 blur-[120px] rounded-full"
         />
-        <motion.div 
+        <motion.div
           animate={{ scale: [1, 1.5, 1], opacity: [0.2, 0.4, 0.2] }}
           transition={{ duration: 20, repeat: Infinity, ease: "easeInOut", delay: 5 }}
-          className="absolute top-[30%] -right-[10%] w-[40%] h-[40%] bg-primary/10 blur-[120px] rounded-full" 
+          className="absolute top-[30%] -right-[10%] w-[40%] h-[40%] bg-primary/10 blur-[120px] rounded-full"
         />
       </div>
 
       {/* Navigation */}
       <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border bg-card/40 backdrop-blur-2xl">
         <div className="mx-auto max-w-7xl px-6 h-20 flex items-center justify-between">
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.8, ease: "easeOut" }}
-            className="flex items-center gap-3"
+            className="flex items-center gap-2"
           >
-            <div className="w-8 h-8 rounded-xl flex items-center justify-center vibrant-panel">
-              <span className="text-white font-bold text-lg leading-none">M</span>
-            </div>
-            <span className="font-bold tracking-tight text-lg text-foreground">Moméntum</span>
+            <MomentumLogo className="w-8 h-8" />
+            <span className="font-bold tracking-tight text-lg text-foreground">Moméntum-AI</span>
           </motion.div>
 
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.8, ease: "easeOut" }}
@@ -138,11 +137,11 @@ export default function Landing({ session }) {
 
       <main className="relative z-10 pt-32 pb-20 px-6 overflow-hidden">
         {/* Hero Section */}
-        <motion.section 
+        <motion.section
           style={{ y: heroY, opacity: heroOpacity }}
           className="mx-auto max-w-7xl pt-20 pb-32 text-center"
         >
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
@@ -152,7 +151,7 @@ export default function Landing({ session }) {
             <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-foreground">Meeting Intelligence</span>
           </motion.div>
 
-          <motion.h1 
+          <motion.h1
             initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1], delay: 0.1 }}
@@ -162,7 +161,7 @@ export default function Landing({ session }) {
             <span className="text-gradient">Done completely automatically.</span>
           </motion.h1>
 
-          <motion.p 
+          <motion.p
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1], delay: 0.2 }}
@@ -171,7 +170,7 @@ export default function Landing({ session }) {
             Moméntum captures your meetings and turns them into actual actionable tasks automatically, keeping your workflow quick and organized.
           </motion.p>
 
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1], delay: 0.3 }}
@@ -188,7 +187,7 @@ export default function Landing({ session }) {
         </motion.section>
 
         {/* Cinematic Bento Layout */}
-        <motion.section 
+        <motion.section
           variants={staggerContainer}
           initial="hidden"
           whileInView="visible"
@@ -198,7 +197,7 @@ export default function Landing({ session }) {
           {/* Main Visualizer Panel */}
           <motion.div variants={fadeIn} className="md:col-span-8 glass-panel p-8 sm:p-12 min-h-[500px] flex flex-col justify-between group overflow-hidden relative">
             <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
-            
+
             <div className="relative z-10">
               <div className="inline-flex items-center gap-2 rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 mb-6">
                 <Waves className="h-3 w-3 text-blue-500" />
@@ -230,7 +229,7 @@ export default function Landing({ session }) {
           {/* Stats / Context Panel */}
           <motion.div variants={fadeIn} className="md:col-span-4 vibrant-panel p-8 sm:p-12 flex flex-col justify-between relative overflow-hidden group">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.2)_0%,transparent_60%)]" />
-            
+
             <div className="relative z-10 space-y-12">
               {[
                 { label: 'Data Quality', value: '100%', desc: 'Safe storage binding.' },
@@ -275,7 +274,7 @@ export default function Landing({ session }) {
         </motion.section>
 
         {/* Global CTA */}
-        <motion.section 
+        <motion.section
           initial={{ opacity: 0, y: 40 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: "-100px" }}
@@ -285,7 +284,7 @@ export default function Landing({ session }) {
           <div className="absolute inset-0 flex items-center justify-center opacity-20 pointer-events-none">
             <div className="w-full h-[1px] bg-gradient-to-r from-transparent via-foreground to-transparent" />
           </div>
-          
+
           <div className="relative z-10 py-16">
             <h2 className="text-4xl sm:text-6xl font-extrabold tracking-tighter text-foreground mb-6">
               Establish Moméntum.
@@ -300,8 +299,58 @@ export default function Landing({ session }) {
         </motion.section>
       </main>
 
-      <footer className="border-t border-border bg-card/50 py-12 text-center text-xs text-muted-foreground font-bold tracking-widest uppercase">
-        <p>Moméntum AI © 2026. Make Meetings Useful.</p>
+      <footer className="border-t border-border bg-gradient-to-b from-card to-background/50 backdrop-blur-sm">
+        <div className="max-w-7xl mx-auto px-6 md:px-12 py-12 md:py-16">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-12 mb-12">
+            {/* Brand Column */}
+            <div>
+              <div className="flex items-center mb-4">
+                <MomentumLogo className="h-8 w-auto max-w-[180px]" />
+              </div>
+              <p className="text-sm text-muted-foreground leading-relaxed">Transform your meetings into actionable intelligence with AI-powered task automation.</p>
+            </div>
+
+            {/* Product Column */}
+            <div>
+              <h3 className="font-semibold text-foreground mb-4 text-sm uppercase tracking-wide">Product</h3>
+              <ul className="space-y-2">
+                <li><a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Features</a></li>
+                <li><a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Pricing</a></li>
+                <li><a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Documentation</a></li>
+                <li><a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Status</a></li>
+              </ul>
+            </div>
+
+            {/* Company Column */}
+            <div>
+              <h3 className="font-semibold text-foreground mb-4 text-sm uppercase tracking-wide">Company</h3>
+              <ul className="space-y-2">
+                <li><a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">About</a></li>
+                <li><a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Blog</a></li>
+                <li><a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Privacy</a></li>
+                <li><a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Terms</a></li>
+              </ul>
+            </div>
+          </div>
+
+          {/* Divider */}
+          <div className="border-t border-border/50 pt-8">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <p className="text-xs text-muted-foreground font-medium">© 2026 Moméntum-AI. All rights reserved. Make Meetings Useful.</p>
+              <div className="flex items-center gap-6">
+                <a href="#" className="text-muted-foreground hover:text-foreground transition-colors">
+                  <span className="text-xs font-medium">Twitter</span>
+                </a>
+                <a href="#" className="text-muted-foreground hover:text-foreground transition-colors">
+                  <span className="text-xs font-medium">LinkedIn</span>
+                </a>
+                <a href="#" className="text-muted-foreground hover:text-foreground transition-colors">
+                  <span className="text-xs font-medium">GitHub</span>
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
       </footer>
     </div>
   );

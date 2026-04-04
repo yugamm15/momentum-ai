@@ -46,10 +46,10 @@ export default function DashboardHome() {
       initial="hidden"
       animate="visible"
       variants={staggerContainer}
-      className="p-6 md:p-8 xl:p-12 space-y-8 max-w-[1600px] mx-auto min-h-full"
+      className="p-4 md:p-6 xl:p-8 space-y-6 max-w-[1600px] mx-auto min-h-full"
     >
       {/* Header Context */}
-      <motion.header variants={fadeUp} className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
+      <motion.header variants={fadeUp} className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-6">
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 mb-4 rounded-full bg-primary/10 border border-primary/20 text-[10px] uppercase font-bold text-primary tracking-widest shadow-sm">
             <Activity className="w-3 h-3" />
@@ -95,10 +95,10 @@ export default function DashboardHome() {
       </motion.section>
 
       {/* Main Grid Split */}
-      <div className="grid grid-cols-1 xl:grid-cols-[1.5fr_1fr] gap-8">
+      <div className="grid grid-cols-1 xl:grid-cols-[1.5fr_1fr] gap-6 -mt-2">
         
         {/* Left Column: Recent Audio Logic */}
-        <motion.div variants={staggerContainer} className="space-y-6">
+        <motion.div variants={staggerContainer} className="space-y-4">
           <motion.div variants={fadeUp} className="flex justify-between items-end mb-4">
             <div>
               <h2 className="text-2xl font-bold tracking-tight text-foreground">Recent Meetings</h2>

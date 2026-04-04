@@ -16,6 +16,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { signOut } from '../../lib/auth';
 import { useWorkspace } from '../workspace/useWorkspace';
+import MomentumLogo from '../MomentumLogo';
 
 const navigation = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -71,10 +72,8 @@ export default function WorkspaceShell({ session }) {
         
         {/* Logo Area */}
         <div className="h-20 px-6 flex items-center justify-between border-b border-border/50">
-          <Link to="/" className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl flex items-center justify-center vibrant-panel">
-              <span className="text-white font-bold text-lg leading-none">M</span>
-            </div>
+          <Link to="/" className="flex items-center gap-2">
+            <MomentumLogo className="w-8 h-8" />
             <span className="font-bold tracking-tight text-lg text-foreground">Moméntum</span>
           </Link>
           <button onClick={() => setNavOpen(false)} className="md:hidden text-muted-foreground hover:text-foreground">
@@ -140,10 +139,8 @@ export default function WorkspaceShell({ session }) {
       <main className="flex-1 relative z-10 w-full h-screen overflow-y-auto">
         {/* Mobile Header Box */}
         <div className="md:hidden sticky top-0 z-20 flex items-center justify-between px-6 h-20 border-b border-border/50 bg-card/60 backdrop-blur-xl">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl flex items-center justify-center vibrant-panel">
-              <span className="text-white font-bold text-lg leading-none">M</span>
-            </div>
+          <div className="flex items-center gap-2">
+            <MomentumLogo className="w-8 h-8" />
             <span className="font-bold tracking-tight text-lg text-foreground">Moméntum</span>
           </div>
           <button onClick={() => setNavOpen(true)} className="text-foreground relative z-20 p-2 -mr-2">
