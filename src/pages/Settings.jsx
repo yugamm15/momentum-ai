@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  CreditCard,
   Cpu,
   Database,
   KeyRound,
@@ -267,6 +268,12 @@ export default function Settings() {
           <div className="mt-8 inline-flex items-center gap-3 px-4 py-2.5 rounded-xl bg-secondary/50 border border-border shadow-sm text-sm font-bold text-foreground">
             <div className={`w-2 h-2 rounded-full ${loading ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`} />
             {loading ? 'Checking connection status...' : status.summary}
+          </div>
+          <div className="mt-5">
+            <Link to="/dashboard/billing" className="button-secondary inline-flex">
+              <CreditCard className="h-4 w-4" />
+              Manage billing
+            </Link>
           </div>
         </div>
       </motion.section>

@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-do
 import {
   ChartNoAxesCombined,
   Columns3,
+  CreditCard,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -23,6 +24,7 @@ const navigation = [
   { to: '/dashboard/meetings', label: 'Meetings', icon: Video },
   { to: '/dashboard/tasks', label: 'Tasks', icon: Columns3 },
   { to: '/dashboard/analytics', label: 'Analytics', icon: ChartNoAxesCombined },
+  { to: '/dashboard/billing', label: 'Billing', icon: CreditCard },
   { to: '/dashboard/upload', label: 'Upload Audio', icon: Upload },
   { to: '/dashboard/settings', label: 'Settings', icon: Settings },
 ];

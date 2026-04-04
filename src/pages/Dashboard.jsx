@@ -6,6 +6,7 @@ import Meetings from './Meetings';
 import MeetingDetail from './MeetingDetail';
 import Tasks from './Tasks';
 import Analytics from './Analytics';
+import Billing from './Billing';
 import UploadHub from './UploadHub';
 import Settings from './Settings';
 
@@ -19,6 +20,7 @@ export default function Dashboard({ session }) {
           <Route path="meetings/:meetingId" element={<MeetingDetail />} />
           <Route path="tasks" element={<Tasks />} />
           <Route path="analytics" element={<Analytics />} />
+          <Route path="billing" element={<Billing session={session} />} />
           <Route path="upload" element={<UploadHub />} />
           <Route path="settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
