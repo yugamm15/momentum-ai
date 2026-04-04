@@ -436,7 +436,7 @@ export async function askMeetingQuestion(meeting, question) {
     throw new Error(payload?.error || 'Momentum could not answer that meeting question.');
   }
 
-  return normalizeMeetingAnswer(payload.answer);
+  return payload.answer;
 }
 
 export async function processStoredMeeting(meetingId) {
@@ -454,33 +454,6 @@ export async function processStoredMeeting(meetingId) {
   }
 
   return payload;
-}
-
-function normalizeMeetingAnswer(answer) {
-  if (typeof answer === 'string') {
-    return {
-      text: answer,
-      support: 'partial',
-      note: '',
-      evidence: [],
-    };
-  }
-
-  const normalizedEvidence = (Array.isArray(answer?.evidence) ? answer.evidence : [])
-    .map((entry, index) => ({
-      id: entry?.id || `evidence-${index + 1}`,
-      speaker: String(entry?.speaker || '').trim(),
-      time: String(entry?.time || '').trim(),
-      text: String(entry?.text || '').trim(),
-    }))
-    .filter((entry) => entry.text);
-
-  return {
-    text: String(answer?.text || '').trim() || 'The transcript does not clearly support an answer to that question.',
-    support: String(answer?.support || '').trim() || 'partial',
-    note: String(answer?.note || '').trim(),
-    evidence: normalizedEvidence,
-  };
 }
 
 async function fetchWorkspaceSnapshotFromApi() {

@@ -5,8 +5,6 @@ export default function AiInput003({
   onSendMessage,
   loading = false,
   placeholder = 'Ask about this meeting...',
-  submitLabel = 'Ask Moméntum',
-  loadingLabel = 'Processing...',
 }) {
   const [text, setText] = useState('');
 
@@ -47,11 +45,11 @@ export default function AiInput003({
             {loading ? (
               <>
                 <Sparkles className="h-3.5 w-3.5 animate-pulse" />
-                {loadingLabel}
+                Processing...
               </>
             ) : (
               <>
-                <span>{submitLabel}</span>
+                <span>Ask Moméntum</span>
                 <ArrowUp className="h-3.5 w-3.5" />
               </>
             )}

@@ -9,6 +9,10 @@ export function apiUrl(path) {
     return `${configuredApiBase}${normalizedPath}`;
   }
 
+  if (import.meta.env.DEV) {
+    return `https://momentum-ai-meet.vercel.app${normalizedPath}`;
+  }
+
   return normalizedPath;
 }
 
@@ -20,18 +24,10 @@ export async function apiFetch(path, init = {}) {
     headers.set('Authorization', `Bearer ${accessToken}`);
   }
 
-  const response = await fetch(apiUrl(path), {
+  return fetch(apiUrl(path), {
     ...init,
     headers,
   });
-
-  if (import.meta.env.DEV && !configuredApiBase && response.status === 404) {
-    throw new Error(
-      'Local API routes were not found. Set VITE_API_BASE_URL for development or run the app from an environment that serves /api routes.'
-    );
-  }
-
-  return response;
 }
 
 async function getAccessToken() {
