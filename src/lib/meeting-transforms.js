@@ -583,6 +583,11 @@ function pickFirstUsableLabel(...values) {
 }
 
 function resolveLegacyMeetingTitle({ candidates = [], transcriptText, summaryParagraph, tasks = [], meetingCode = '' }) {
+  const existing = pickFirstUsableLabel(...candidates);
+  if (existing) {
+    return existing;
+  }
+
   const lowSignal = isLowSignalContext({
     normalizedSummary: normalizeComparableText(summaryParagraph),
     transcriptText,
@@ -591,11 +596,6 @@ function resolveLegacyMeetingTitle({ candidates = [], transcriptText, summaryPar
 
   if (lowSignal) {
     return buildLowSignalTitle(meetingCode);
-  }
-
-  const existing = pickFirstUsableLabel(...candidates);
-  if (existing) {
-    return existing;
   }
 
   const taskTitle = toCompactTitle(tasks.map((task) => task.title).find(Boolean));

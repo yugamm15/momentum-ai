@@ -1087,6 +1087,7 @@ function buildDisplaySummaryParagraph({
       meetingCode,
       meetingLabel,
       participants,
+      transcriptText,
     });
   }
 
@@ -1138,12 +1139,56 @@ function normalizeMeetingCode(value) {
   return match ? match[0] : '';
 }
 
-function buildLowSignalTitle(meetingCode) {
+function inferLowSignalNarrative(transcriptText) {
+  const normalized = normalizeComparableText(transcriptText);
+  if (!normalized) {
+    return {
+      title: 'Unclear Meeting Snippet',
+      summary:
+        'The transcript is extremely brief and mostly non-substantive, so clear discussion topics, decisions, or action items could not be confidently extracted.',
+    };
+  }
+
+  const soundCheckSignals = [
+    'sound check',
+    'can you hear',
+    'hear me',
+    'mic check',
+    'audio check',
+    'testing',
+    'test audio',
+  ];
+  if (soundCheckSignals.some((signal) => normalized.includes(signal))) {
+    return {
+      title: 'Meeting Start and Sound Check',
+      summary:
+        'This short meeting segment primarily consisted of a sound check at the beginning. No substantive discussion, decisions, or tasks were captured during this period.',
+    };
+  }
+
+  return {
+    title: 'Unclear Meeting Snippet',
+    summary:
+      'The transcript is extremely brief and mostly non-substantive, so clear discussion topics, decisions, or action items could not be confidently extracted.',
+  };
+}
+
+function buildLowSignalTitle({ meetingCode = '', transcriptText = '' }) {
+  const narrative = inferLowSignalNarrative(transcriptText);
+  if (narrative?.title) {
+    return narrative.title;
+  }
+
   const code = normalizeMeetingCode(meetingCode);
   return code ? `Meeting ${code}` : 'Meeting';
 }
 
-function buildLowSignalSummary({ meetingCode = '', meetingLabel = '', participants = [] }) {
+function buildLowSignalSummary({ meetingCode = '', meetingLabel = '', participants = [], transcriptText = '' }) {
+  const narrative = inferLowSignalNarrative(transcriptText);
+  if (narrative?.summary) {
+    return narrative.summary;
+  }
+
   const code = normalizeMeetingCode(meetingCode);
   const participantLead = participants.length > 1
     ? `${participants[0]} and ${participants[1]}`
@@ -1242,6 +1287,11 @@ function resolveMeetingTitle({
   participants = [],
   meetingCode = '',
 }) {
+  const existingTitle = pickFirstUsableLabel(...candidates);
+  if (existingTitle) {
+    return existingTitle;
+  }
+
   const lowSignal = isLowSignalContext({
     normalizedSummary: normalizeComparableText(summaryParagraph),
     transcriptText,
@@ -1250,12 +1300,10 @@ function resolveMeetingTitle({
   });
 
   if (lowSignal) {
-    return buildLowSignalTitle(meetingCode);
-  }
-
-  const existingTitle = pickFirstUsableLabel(...candidates);
-  if (existingTitle) {
-    return existingTitle;
+    return buildLowSignalTitle({
+      meetingCode,
+      transcriptText,
+    });
   }
 
   const decisionTitle = toCompactTitle(decisions.map((decision) => decision.text).find(Boolean));

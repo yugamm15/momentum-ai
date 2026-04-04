@@ -348,7 +348,8 @@ export function buildFallbackAnalysis(transcript, sourceMetadata = {}) {
     summarySentences,
     fallbackTasks.length,
     transcriptLooksLowSignal,
-    sourceMetadata
+    sourceMetadata,
+    transcript
   );
   const summaryBullets = summarySentences.slice(0, 4);
   const tasks = fallbackTasks.map((task) => ({
@@ -767,6 +768,11 @@ function normalizeRiskFlags(riskFlags, tasks, transcript, ownerResolutionRisks =
 function buildFallbackTitle(sentences, sourceMetadata = {}, transcriptLooksLowSignal = false) {
   const sanitizedCode = sanitizeMeetingCode(sourceMetadata?.meetingCode);
   if (transcriptLooksLowSignal) {
+    const narrative = inferLowSignalNarrative(sentences.join(' '));
+    if (narrative?.title) {
+      return narrative.title;
+    }
+
     return sanitizedCode ? `Meeting ${sanitizedCode}` : 'Meeting';
   }
 
@@ -799,7 +805,7 @@ function buildFallbackTitle(sentences, sourceMetadata = {}, transcriptLooksLowSi
   return title || 'Meeting Summary';
 }
 
-function buildFallbackSummary(summarySentences, taskCount, transcriptLooksLowSignal, sourceMetadata = {}) {
+function buildFallbackSummary(summarySentences, taskCount, transcriptLooksLowSignal, sourceMetadata = {}, transcript = '') {
   const participantNames = dedupeNames(sourceMetadata?.participantNames || []);
   const participantLead = participantNames.length > 1
     ? `${participantNames[0]} and ${participantNames[1]}`
@@ -807,6 +813,11 @@ function buildFallbackSummary(summarySentences, taskCount, transcriptLooksLowSig
   const meetingCode = sanitizeMeetingCode(sourceMetadata?.meetingCode);
 
   if (transcriptLooksLowSignal) {
+    const narrative = inferLowSignalNarrative(transcript);
+    if (narrative?.summary) {
+      return narrative.summary;
+    }
+
     if (participantLead && meetingCode) {
       return `${participantLead} joined meeting ${meetingCode}. Audio was captured, but speech signal was too limited for a detailed summary.`;
     }
@@ -834,6 +845,45 @@ function buildFallbackSummary(summarySentences, taskCount, transcriptLooksLowSig
   }
 
   return 'Transcript processed successfully, but the AI fallback summary had limited detail to work with.';
+}
+
+function inferLowSignalNarrative(transcriptText) {
+  const normalized = String(transcriptText || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!normalized) {
+    return {
+      title: 'Unclear Meeting Snippet',
+      summary:
+        'The transcript is extremely brief and mostly non-substantive, so clear discussion topics, decisions, or action items could not be confidently extracted.',
+    };
+  }
+
+  const soundCheckSignals = [
+    'sound check',
+    'can you hear',
+    'hear me',
+    'mic check',
+    'audio check',
+    'testing',
+    'test audio',
+  ];
+  if (soundCheckSignals.some((signal) => normalized.includes(signal))) {
+    return {
+      title: 'Meeting Start and Sound Check',
+      summary:
+        'This short meeting segment primarily consisted of a sound check at the beginning. No substantive discussion, decisions, or tasks were captured during this period.',
+    };
+  }
+
+  return {
+    title: 'Unclear Meeting Snippet',
+    summary:
+      'The transcript is extremely brief and mostly non-substantive, so clear discussion topics, decisions, or action items could not be confidently extracted.',
+  };
 }
 
 function buildFallbackDecisions(summarySentences) {
