@@ -135,11 +135,11 @@ export default function Landing({ session }) {
         </div>
       </nav>
 
-      <main className="relative z-10 pt-32 pb-20 px-6 overflow-hidden">
+      <main className="relative z-10 pt-20 pb-20 px-6 overflow-hidden">
         {/* Hero Section */}
         <motion.section
           style={{ y: heroY, opacity: heroOpacity }}
-          className="mx-auto max-w-7xl pt-20 pb-32 text-center"
+          className="mx-auto max-w-7xl pt-6 pb-32 text-center"
         >
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
@@ -336,7 +336,7 @@ export default function Landing({ session }) {
           {/* Divider */}
           <div className="border-t border-border/50 pt-8">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-              <p className="text-xs text-muted-foreground font-medium">© 2026 Moméntum-AI. All rights reserved. Make Meetings Useful.</p>
+              <p className="text-xs text-muted-foreground font-medium">© 2026 Moméntum-AI. All rights reserved.</p>
               <div className="flex items-center gap-6">
                 <a href="#" className="text-muted-foreground hover:text-foreground transition-colors">
                   <span className="text-xs font-medium">Twitter</span>
