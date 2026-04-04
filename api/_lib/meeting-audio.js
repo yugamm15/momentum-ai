@@ -7,6 +7,8 @@ import { supportsV2WorkspaceSchema } from './v2-persistence.js';
 const STORAGE_BUCKET = process.env.STORAGE_BUCKET || 'meetings';
 const RAW_UPLOAD_STATUS_PREFIX = 'raw-uploaded:';
 const LEGACY_RAW_UPLOAD_STATUS_PREFIX = 'audio-uploaded:';
+const MAX_EMBEDDED_AUDIO_BYTES = 6 * 1024 * 1024;
+const LEGACY_METADATA_MARKER = '[MOMENTUM_META]';
 
 export function isRawUploadStatus(status) {
   const value = String(status || '').trim();
@@ -36,7 +38,13 @@ export async function storeRawMeetingAudio({
   bucketName = STORAGE_BUCKET,
 }) {
   const normalizedFile = await normalizeInputFile(file, contentType, meetingCode);
-  const storage = await uploadRecordingToStorage(supabase, normalizedFile, normalizedFile.type, meetingCode, bucketName);
+  const storage = await persistRecordingArtifact(
+    supabase,
+    normalizedFile,
+    normalizedFile.type,
+    meetingCode,
+    bucketName
+  );
   const legacyTables = await getLegacyTableNames(supabase);
   const useUnifiedMeetingsTable =
     legacyTables.meetings === 'meetings' && (await supportsV2WorkspaceSchema(supabase));
@@ -57,6 +65,8 @@ export async function storeRawMeetingAudio({
     workspaceId,
     userId,
     useUnifiedMeetingsTable,
+    storageMode: storage.mode,
+    storageError: storage.error,
   });
   const meeting = await upsertRawMeetingRow(supabase, sessionId, payload, {
     useUnifiedMeetingsTable,
@@ -71,7 +81,10 @@ export async function storeRawMeetingAudio({
     audioUrl: storage.audioUrl,
     analysisComplete: false,
     storageMode: storage.mode,
-    detail: 'Raw meeting audio is safely stored. Finish AI analysis from the dashboard when the processing pipeline is ready.',
+    detail:
+      storage.audioUrl
+        ? 'Raw meeting audio is safely stored. Finish AI analysis from the dashboard when the processing pipeline is ready.'
+        : 'Momentum saved the meeting metadata, but the audio artifact still needs storage attention before playback is available.',
   };
 }
 
@@ -120,10 +133,12 @@ export function inferMeetingCode(meeting) {
 
 export function extractRawMeetingMetadata(meeting, participantRows = []) {
   const summary = String(meeting?.summary || '').trim();
+  const summaryMetadata = extractLegacySummaryMetadata(summary);
   const participantNames = Array.from(
     new Set(
       [
         ...(Array.isArray(participantRows) ? participantRows : []).map((row) => row?.display_name),
+        ...(summaryMetadata.participantNames || []),
         ...parseSummaryParticipants(summary),
       ]
         .map((value) => String(value || '').trim())
@@ -134,28 +149,36 @@ export function extractRawMeetingMetadata(meeting, participantRows = []) {
   return {
     sourcePlatform:
       cleanNullable(meeting?.source_platform) ||
+      cleanNullable(summaryMetadata.sourcePlatform) ||
       parseSummaryField(summary, /Platform:\s([^.]*)\./i),
     meetingCode:
       sanitizeMeetingCode(meeting?.source_meeting_code || '') ||
+      sanitizeMeetingCode(summaryMetadata.meetingCode || '') ||
       inferMeetingCode(meeting),
     meetingUrl:
       cleanNullable(meeting?.source_meeting_url) ||
+      cleanNullable(summaryMetadata.meetingUrl) ||
       parseSummaryField(summary, /Source:\s(https?:\/\/\S+)/i),
     meetingLabel:
       cleanNullable(meeting?.source_meeting_label) ||
+      cleanNullable(summaryMetadata.meetingLabel) ||
       parseSummaryField(summary, /Visible label:\s([^.]*)\./i),
     participantNames,
     recordingStartedAt:
       cleanNullable(meeting?.recording_started_at) ||
+      cleanNullable(summaryMetadata.recordingStartedAt) ||
       parseSummaryField(summary, /Started:\s([^.]*)\./i),
     recordingStoppedAt:
       cleanNullable(meeting?.recording_stopped_at) ||
+      cleanNullable(summaryMetadata.recordingStoppedAt) ||
       parseSummaryField(summary, /Stopped:\s([^.]*)\./i),
     workspaceId:
       cleanNullable(meeting?.workspace_id) ||
+      cleanNullable(summaryMetadata.workspaceId) ||
       parseSummaryField(summary, /Workspace id:\s([^.]*)\./i),
     userId:
       cleanNullable(meeting?.created_by_profile_id) ||
+      cleanNullable(summaryMetadata.userId) ||
       parseSummaryField(summary, /User id:\s([^.]*)\./i),
   };
 }
@@ -177,10 +200,12 @@ function buildRawMeetingPayload({
   workspaceId,
   userId,
   useUnifiedMeetingsTable,
+  storageMode,
+  storageError,
 }) {
   const readableCode = sanitizeMeetingCode(meetingCode) || 'meet-session';
   const recordedAt = new Date().toLocaleString('en-US', { timeZone: 'Asia/Calcutta' });
-  const legacySummary = [
+  const legacySummaryBase = [
     'Raw meeting audio was saved by Momentum.',
     'AI transcription and analysis are pending.',
     meetingUrl ? `Source: ${meetingUrl}` : null,
@@ -201,6 +226,21 @@ function buildRawMeetingPayload({
   ]
     .filter(Boolean)
     .join(' ');
+  const legacySummary = buildLegacySummaryWithMetadata(legacySummaryBase, {
+    sourcePlatform,
+    meetingCode,
+    meetingUrl,
+    meetingLabel,
+    participantNames,
+    recordingStartedAt,
+    recordingStoppedAt,
+    connectionToken,
+    workspaceId,
+    userId,
+    extensionVersion,
+    audioMode: storageMode,
+    audioError: storageError,
+  });
   const title = meetingLabel ? `Audio captured for ${meetingLabel}` : `Audio captured for ${readableCode}`;
   const summaryParagraph = 'Raw meeting audio was saved by Momentum. AI transcription and analysis are pending.';
   const summaryBullets = [
@@ -319,7 +359,11 @@ async function findExistingRawMeeting(supabase, sessionId) {
 
 async function uploadRecordingToStorage(supabase, file, contentType, meetingCode, bucketName) {
   if (!bucketName) {
-    throw new Error('Supabase Storage is not configured for raw meeting uploads.');
+    return {
+      audioUrl: await buildEmbeddedAudioDataUrl(file),
+      mode: 'embedded',
+      error: 'Supabase Storage is not configured for raw meeting uploads.',
+    };
   }
 
   const safeMeetingCode = sanitizeMeetingCode(meetingCode) || 'meeting';
@@ -330,20 +374,41 @@ async function uploadRecordingToStorage(supabase, file, contentType, meetingCode
   });
 
   if (uploadResult.error) {
-    throw new Error(describeStorageError(uploadResult.error.message, bucketName));
+    return {
+      audioUrl: await buildEmbeddedAudioDataUrl(file),
+      mode: 'embedded',
+      error: describeStorageError(uploadResult.error.message, bucketName),
+    };
   }
 
   const { data: publicUrlData } = supabase.storage.from(bucketName).getPublicUrl(storagePath);
   const audioUrl = publicUrlData?.publicUrl || '';
 
   if (!audioUrl) {
-    throw new Error('Supabase Storage did not return a public audio URL.');
+    return {
+      audioUrl: await buildEmbeddedAudioDataUrl(file),
+      mode: 'embedded',
+      error: 'Supabase Storage did not return a public audio URL.',
+    };
   }
 
   return {
     audioUrl,
     mode: 'bucket',
+    error: '',
   };
+}
+
+async function persistRecordingArtifact(supabase, file, contentType, meetingCode, bucketName) {
+  try {
+    return await uploadRecordingToStorage(supabase, file, contentType, meetingCode, bucketName);
+  } catch (error) {
+    return {
+      audioUrl: await buildEmbeddedAudioDataUrl(file),
+      mode: 'embedded',
+      error: error?.message || 'Supabase Storage could not save the raw meeting audio.',
+    };
+  }
 }
 
 function normalizeInputFile(file, contentType, meetingCode) {
@@ -446,6 +511,16 @@ function getFileExtension(contentType) {
   return 'webm';
 }
 
+async function buildEmbeddedAudioDataUrl(file) {
+  if (!(file instanceof Blob) || Number(file.size || 0) <= 0 || Number(file.size || 0) > MAX_EMBEDDED_AUDIO_BYTES) {
+    return null;
+  }
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const contentType = String(file.type || 'audio/webm').trim() || 'audio/webm';
+  return `data:${contentType};base64,${buffer.toString('base64')}`;
+}
+
 async function syncRawMeetingParticipants(supabase, meetingId, participantNames, workspaceId) {
   const dedupedNames = Array.from(
     new Set(
@@ -527,4 +602,74 @@ function normalizeTimestamp(value) {
   }
 
   return new Date(parsed).toISOString();
+}
+
+function extractLegacySummaryMetadata(summary) {
+  const text = String(summary || '').trim();
+  const markerIndex = text.lastIndexOf(LEGACY_METADATA_MARKER);
+  if (markerIndex === -1) {
+    return {};
+  }
+
+  const payload = text.slice(markerIndex + LEGACY_METADATA_MARKER.length).trim();
+  try {
+    const metadata = JSON.parse(payload);
+    return {
+      sourcePlatform: cleanNullable(metadata?.sourcePlatform),
+      meetingCode: sanitizeMeetingCode(metadata?.meetingCode),
+      meetingUrl: cleanNullable(metadata?.meetingUrl),
+      meetingLabel: cleanNullable(metadata?.meetingLabel),
+      participantNames: Array.isArray(metadata?.participantNames)
+        ? metadata.participantNames.map((value) => String(value || '').trim()).filter(Boolean)
+        : [],
+      recordingStartedAt: cleanNullable(metadata?.recordingStartedAt),
+      recordingStoppedAt: cleanNullable(metadata?.recordingStoppedAt),
+      workspaceId: cleanNullable(metadata?.workspaceId),
+      userId: cleanNullable(metadata?.userId),
+    };
+  } catch {
+    return {};
+  }
+}
+
+function buildLegacySummaryWithMetadata(summary, metadata = {}) {
+  const cleanSummary = sanitizeLegacySummaryForDisplay(summary);
+  const safeMetadata = {
+    sourcePlatform: cleanNullable(metadata?.sourcePlatform),
+    meetingCode: sanitizeMeetingCode(metadata?.meetingCode),
+    meetingUrl: cleanNullable(metadata?.meetingUrl),
+    meetingLabel: cleanNullable(metadata?.meetingLabel),
+    participantNames: Array.isArray(metadata?.participantNames)
+      ? metadata.participantNames.map((value) => String(value || '').trim()).filter(Boolean)
+      : [],
+    recordingStartedAt: cleanNullable(metadata?.recordingStartedAt),
+    recordingStoppedAt: cleanNullable(metadata?.recordingStoppedAt),
+    connectionTokenPresent: Boolean(cleanNullable(metadata?.connectionToken)),
+    workspaceId: cleanNullable(metadata?.workspaceId),
+    userId: cleanNullable(metadata?.userId),
+    extensionVersion: cleanNullable(metadata?.extensionVersion),
+    audioMode: cleanNullable(metadata?.audioMode),
+    audioError: cleanNullable(metadata?.audioError),
+  };
+  const hasMetadata = Object.values(safeMetadata).some((value) =>
+    Array.isArray(value) ? value.length > 0 : Boolean(value)
+  );
+
+  if (!hasMetadata) {
+    return cleanSummary;
+  }
+
+  return [cleanSummary, `${LEGACY_METADATA_MARKER} ${JSON.stringify(safeMetadata)}`]
+    .filter(Boolean)
+    .join('\n\n');
+}
+
+function sanitizeLegacySummaryForDisplay(summary) {
+  const text = String(summary || '').trim();
+  const markerIndex = text.lastIndexOf(LEGACY_METADATA_MARKER);
+  if (markerIndex === -1) {
+    return text;
+  }
+
+  return text.slice(0, markerIndex).trim();
 }

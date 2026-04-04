@@ -1,6 +1,7 @@
 const reviewTokens = ['unclear', 'unknown', 'someone', 'missing', 'tbd'];
 const sentenceSplitPattern = /(?<=[.!?])\s+/;
 const rawUploadStatusPrefixes = ['raw-uploaded:', 'audio-uploaded:'];
+const legacyMetadataMarker = '[MOMENTUM_META]';
 const placeholderMeetingTitles = [
   'brief interaction',
   'brief exchange',
@@ -177,8 +178,13 @@ function isRawUploadedMeeting(meeting) {
 
 function transcriptLooksLowSignal(text) {
   const normalized = String(text || '').trim().toLowerCase();
-  const words = transcriptWordCount(normalized);
-  return ['you', 'you you', 'ok', 'okay', 'hello', 'hi'].includes(normalized) || words <= 2;
+  const words = normalizedWordList(normalized);
+  const uniqueWords = new Set(words);
+  return (
+    ['you', 'you you', 'ok', 'okay', 'hello', 'hi', 'thanks', 'thank you'].includes(normalized) ||
+    words.length < 10 ||
+    uniqueWords.size < 5
+  );
 }
 
 function bestSourceSnippet(taskTitle, transcriptSegments, summary) {
@@ -325,9 +331,18 @@ function buildMeetingRisks({ tasks, transcriptSegments, clarityScore, executionS
   return risks.slice(0, 6);
 }
 
-function buildRationale({ clarityScore, ownershipScore, executionScore, tasks }) {
+function buildRationale({ clarityScore, ownershipScore, executionScore, tasks, transcriptText = '' }) {
   const ownedTasks = tasks.filter((task) => task.owner).length;
   const dueDatedTasks = tasks.filter((task) => task.dueDate).length;
+  const lowSignal = transcriptLooksLowSignal(transcriptText) || transcriptWordCount(transcriptText) < 12;
+
+  if (lowSignal) {
+    return 'Momentum captured only a weak transcript signal here, so the score is intentionally conservative and should be reviewed manually.';
+  }
+
+  if (tasks.length === 0) {
+    return 'This meeting produced little clearly executable output, so Momentum is keeping ownership and execution confidence conservative.';
+  }
 
   if (ownedTasks === tasks.length && dueDatedTasks === tasks.length && clarityScore >= 80) {
     return 'Strong action language, explicit ownership, and clear deadlines make this meeting highly executable.';
@@ -353,7 +368,7 @@ function summarizeParticipants(participants) {
 }
 
 function parseParticipantsFromRawSummary(summary) {
-  const match = String(summary || '').match(/Participants:\s([^.]*)\./i);
+  const match = String(summary || '').match(/Participants:\s([^.\n]*)[.\n]/i);
   if (!match?.[1]) {
     return [];
   }
@@ -369,11 +384,19 @@ export function transformLegacyMeeting(meeting, legacyTasks = []) {
     return null;
   }
 
+  const summaryPayload = extractLegacySummaryPayload(meeting.summary);
+  const summaryText = summaryPayload.summary;
+  const metadata = summaryPayload.metadata;
   const rawUploaded = isRawUploadedMeeting(meeting);
-  const transcriptSegments = transcriptSegmentsFromText(meeting.transcript);
-  const aiTitle = String(meeting.title || '').trim() || 'Untitled execution review';
+  const transcriptText = String(meeting.transcript || '').trim();
+  const transcriptSegments = transcriptSegmentsFromText(transcriptText);
+  const aiTitle =
+    String(metadata.meetingLabel || '').trim() ||
+    String(meeting.title || '').trim() ||
+    'Untitled execution review';
   const summaryParagraph =
-    String(meeting.summary || '').trim() || 'Momentum stored the transcript, but the meeting summary still needs a quick review.';
+    String(summaryText || '').trim() ||
+    'Momentum stored the transcript, but the meeting summary still needs a quick review.';
   const tasks = rawUploaded
     ? []
     : legacyTasks
@@ -382,20 +405,18 @@ export function transformLegacyMeeting(meeting, legacyTasks = []) {
   const participants = summarizeParticipants(
     Array.from(
       new Set([
+        ...((Array.isArray(metadata.participantNames) ? metadata.participantNames : [])),
         ...parseParticipantsFromRawSummary(summaryParagraph),
         ...deriveParticipants(tasks),
       ])
     )
   );
-  const explicitOwners = tasks.filter((task) => task.owner).length;
-  const explicitDeadlines = tasks.filter((task) => task.dueDate).length;
-  const clarityScore = Math.max(45, Math.min(98, Number(meeting.clarity || 72)));
-  const executionScore = Math.max(45, Math.min(98, Number(meeting.actionability || 70)));
-  const ownershipScore =
-    tasks.length > 0
-      ? Math.round(((explicitOwners + explicitDeadlines) / (tasks.length * 2)) * 100)
-      : 68;
-  const overall = weightedOverall({ clarityScore, ownershipScore, executionScore });
+  const scores = deriveLegacyScores({
+    meeting,
+    tasks,
+    transcriptText,
+    rawUploaded,
+  });
   const decisions = rawUploaded
     ? []
     : buildSummaryBullets(summaryParagraph, tasks).slice(0, 3).map((bullet, index) => ({
@@ -424,17 +445,20 @@ export function transformLegacyMeeting(meeting, legacyTasks = []) {
     : buildMeetingRisks({
         tasks,
         transcriptSegments,
-        clarityScore,
-        executionScore,
+        clarityScore: scores.clarityScore,
+        executionScore: scores.executionScore,
       });
 
   return {
     id: meeting.id,
     aiTitle,
-    rawTitle: String(meeting.title || '').trim() || 'Google Meet upload',
+    rawTitle:
+      String(metadata.meetingLabel || '').trim() ||
+      String(meeting.title || '').trim() ||
+      'Google Meet upload',
     timeLabel: niceTimeFromDate(meeting.created_at),
     createdAt: meeting.created_at,
-    source: 'Google Meet',
+    source: String(metadata.sourcePlatform || '').trim() || 'Google Meet',
     participants,
     participantRoster: participants.map((participant, index) => ({
       id: `${meeting.id}-participant-${index + 1}`,
@@ -458,18 +482,118 @@ export function transformLegacyMeeting(meeting, legacyTasks = []) {
     meetingRisks,
     transcript: transcriptSegments,
     score: {
-      overall,
-      clarity: clarityScore,
-      ownership: ownershipScore,
-      execution: executionScore,
-      color: scoreColor(overall),
+      overall: scores.overall,
+      clarity: scores.clarityScore,
+      ownership: scores.ownershipScore,
+      execution: scores.executionScore,
+      color: scoreColor(scores.overall),
     },
-    rationale: buildRationale({ clarityScore, ownershipScore, executionScore, tasks }),
-    transcriptText: meeting.transcript,
+    rationale: buildRationale({
+      clarityScore: scores.clarityScore,
+      ownershipScore: scores.ownershipScore,
+      executionScore: scores.executionScore,
+      tasks,
+      transcriptText,
+    }),
+    transcriptText,
     transcriptAttribution: 'unattributed',
     transcriptNotice: rawUploaded
       ? 'Transcription is not available yet because this recording is still waiting for analysis.'
-      : 'Speaker names are not available for this recording yet, so Momentum is showing an unattributed transcript.',
+      : transcriptLooksLowSignal(transcriptText)
+        ? 'Momentum captured only a weak transcript signal here, so the text and scoring should be reviewed manually.'
+        : 'Speaker names are not available for this recording yet, so Momentum is showing an unattributed transcript.',
     audioUrl: String(meeting.audio_url || '').trim() || null,
   };
+}
+
+function deriveLegacyScores({ meeting, tasks, transcriptText, rawUploaded }) {
+  const transcriptWords = transcriptWordCount(transcriptText);
+  const lowSignal = transcriptLooksLowSignal(transcriptText) || transcriptWords < 12;
+  const explicitOwners = tasks.filter((task) => task.owner).length;
+  const explicitDeadlines = tasks.filter((task) => task.dueDate).length;
+  const storedClarity = Number(meeting.clarity || 0);
+  const storedExecution = Number(meeting.actionability || 0);
+
+  if (rawUploaded) {
+    return {
+      clarityScore: 0,
+      ownershipScore: 0,
+      executionScore: 0,
+      overall: 0,
+    };
+  }
+
+  if (lowSignal) {
+    const clarityScore = Math.max(5, Math.min(25, storedClarity || 15));
+    const ownershipScore = tasks.length > 0
+      ? Math.min(35, Math.round(((explicitOwners + explicitDeadlines) / (tasks.length * 2)) * 100))
+      : 8;
+    const executionScore = tasks.length > 0
+      ? Math.min(35, Math.max(10, storedExecution || 20))
+      : Math.max(5, Math.min(20, storedExecution || 10));
+
+    return {
+      clarityScore,
+      ownershipScore,
+      executionScore,
+      overall: weightedOverall({ clarityScore, ownershipScore, executionScore }),
+    };
+  }
+
+  const clarityScore = Math.max(35, Math.min(98, storedClarity || 72));
+  const ownershipScore =
+    tasks.length > 0
+      ? Math.round(((explicitOwners + explicitDeadlines) / (tasks.length * 2)) * 100)
+      : transcriptWords >= 80
+        ? 42
+        : 24;
+  const executionScore =
+    tasks.length > 0
+      ? Math.max(35, Math.min(98, storedExecution || 70))
+      : Math.min(55, Math.max(24, storedExecution || 40));
+
+  return {
+    clarityScore,
+    ownershipScore,
+    executionScore,
+    overall: weightedOverall({ clarityScore, ownershipScore, executionScore }),
+  };
+}
+
+function extractLegacySummaryPayload(summary) {
+  const text = String(summary || '').trim();
+  const markerIndex = text.lastIndexOf(legacyMetadataMarker);
+
+  if (markerIndex === -1) {
+    return {
+      summary: text,
+      metadata: {},
+    };
+  }
+
+  const summaryText = text.slice(0, markerIndex).trim();
+  const metadataText = text.slice(markerIndex + legacyMetadataMarker.length).trim();
+
+  try {
+    const metadata = JSON.parse(metadataText);
+    return {
+      summary: summaryText,
+      metadata: {
+        participantNames: Array.isArray(metadata?.participantNames)
+          ? metadata.participantNames.map((value) => String(value || '').trim()).filter(Boolean)
+          : [],
+        meetingLabel: String(metadata?.meetingLabel || '').trim(),
+        meetingUrl: String(metadata?.meetingUrl || '').trim(),
+        meetingCode: String(metadata?.meetingCode || '').trim(),
+        sourcePlatform: String(metadata?.sourcePlatform || '').trim(),
+        audioMode: String(metadata?.audioMode || '').trim(),
+        audioError: String(metadata?.audioError || '').trim(),
+      },
+    };
+  } catch {
+    return {
+      summary: summaryText || text,
+      metadata: {},
+    };
+  }
 }

@@ -292,7 +292,7 @@ async function insertV2MeetingRow(supabase, payload) {
 }
 
 async function clearMeetingChildren(supabase, meetingId) {
-  await Promise.all([
+  const results = await Promise.all([
     supabase.from('meeting_participants').delete().eq('meeting_id', meetingId),
     supabase.from('meeting_transcript_segments').delete().eq('meeting_id', meetingId),
     supabase.from('meeting_decisions').delete().eq('meeting_id', meetingId),
@@ -301,6 +301,10 @@ async function clearMeetingChildren(supabase, meetingId) {
     supabase.from('meeting_risk_flags').delete().eq('meeting_id', meetingId),
     supabase.from('meeting_processing_events').delete().eq('meeting_id', meetingId),
   ]);
+  const failure = results.find((result) => result?.error);
+  if (failure?.error) {
+    throw failure.error;
+  }
 }
 
 async function insertMeetingChildren(supabase, meetingId, payload) {
@@ -314,7 +318,10 @@ async function insertMeetingChildren(supabase, meetingId, payload) {
     .filter((participant) => participant.display_name);
 
   if (participantRows.length > 0) {
-    await supabase.from('meeting_participants').insert(participantRows);
+    const { error } = await supabase.from('meeting_participants').insert(participantRows);
+    if (error) {
+      throw error;
+    }
   }
 
   const segmentRows = (payload.transcriptSegments || []).map((segment, index) => ({
@@ -327,7 +334,10 @@ async function insertMeetingChildren(supabase, meetingId, payload) {
   }));
 
   if (segmentRows.length > 0) {
-    await supabase.from('meeting_transcript_segments').insert(segmentRows);
+    const { error } = await supabase.from('meeting_transcript_segments').insert(segmentRows);
+    if (error) {
+      throw error;
+    }
   }
 
   const taskRows = (payload.tasks || []).map((task) => {
@@ -350,7 +360,10 @@ async function insertMeetingChildren(supabase, meetingId, payload) {
   });
 
   if (taskRows.length > 0) {
-    await supabase.from('meeting_tasks').insert(taskRows);
+    const { error } = await supabase.from('meeting_tasks').insert(taskRows);
+    if (error) {
+      throw error;
+    }
   }
 
   const decisionRows = (payload.decisions || []).map((decision) => ({
@@ -361,7 +374,10 @@ async function insertMeetingChildren(supabase, meetingId, payload) {
   }));
 
   if (decisionRows.length > 0) {
-    await supabase.from('meeting_decisions').insert(decisionRows);
+    const { error } = await supabase.from('meeting_decisions').insert(decisionRows);
+    if (error) {
+      throw error;
+    }
   }
 
   const checklistRows = (payload.checklist || []).map((item) => ({
@@ -371,7 +387,10 @@ async function insertMeetingChildren(supabase, meetingId, payload) {
   }));
 
   if (checklistRows.length > 0) {
-    await supabase.from('meeting_checklist_items').insert(checklistRows);
+    const { error } = await supabase.from('meeting_checklist_items').insert(checklistRows);
+    if (error) {
+      throw error;
+    }
   }
 
   const riskRows = (payload.riskFlags || []).map((risk) => ({
@@ -382,7 +401,10 @@ async function insertMeetingChildren(supabase, meetingId, payload) {
   }));
 
   if (riskRows.length > 0) {
-    await supabase.from('meeting_risk_flags').insert(riskRows);
+    const { error } = await supabase.from('meeting_risk_flags').insert(riskRows);
+    if (error) {
+      throw error;
+    }
   }
 }
 
@@ -398,7 +420,10 @@ async function insertProcessingEvents(supabase, meetingId) {
     ...event,
   }));
 
-  await supabase.from('meeting_processing_events').insert(events);
+  const { error } = await supabase.from('meeting_processing_events').insert(events);
+  if (error) {
+    throw error;
+  }
 }
 
 async function loadWorkspaceDirectory(supabase, workspaceId) {

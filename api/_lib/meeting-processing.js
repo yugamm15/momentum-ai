@@ -1,4 +1,5 @@
 /* global process */
+import { Buffer } from 'node:buffer';
 import { createClient } from '@supabase/supabase-js';
 import {
   createMeetingContractFromAnalysis,
@@ -8,6 +9,8 @@ import {
 import { getLegacyTableNames } from './legacy-tables.js';
 
 const STORAGE_BUCKET = process.env.STORAGE_BUCKET || 'meetings';
+const MAX_EMBEDDED_AUDIO_BYTES = 6 * 1024 * 1024;
+const LEGACY_METADATA_MARKER = '[MOMENTUM_META]';
 
 export function getEnv(options = {}) {
   const requireGroq = options.requireGroq !== false;
@@ -56,13 +59,14 @@ export async function processMeetingAudio({
   const normalizedFile = await normalizeInputFile(file, contentType, normalizedSourceMetadata.meetingCode);
   const transcript = await transcribeRecording(normalizedFile, env.groqKey);
   const analysis = await analyzeTranscriptWithFallback(transcript, env.geminiKey, normalizedSourceMetadata);
-  const audioUrl = await tryUploadRecordingToStorage(
+  const audioPersistence = await persistRecordingArtifact(
     supabase,
     normalizedFile,
     normalizedFile.type || contentType || 'audio/webm',
     sanitizeMeetingCode(normalizedSourceMetadata.meetingCode),
     env.storageBucket
   );
+  const audioUrl = audioPersistence.audioUrl;
   const contract = createMeetingContractFromAnalysis({
     legacyMeetingId: existingMeetingId || null,
     sourceMetadata: normalizedSourceMetadata,
@@ -99,6 +103,8 @@ export async function processMeetingAudio({
       {
         existingMeetingId,
         existingAudioUrl,
+        sourceMetadata: normalizedSourceMetadata,
+        audioPersistence,
       }
     );
     meeting = persistedMeeting.meeting;
@@ -159,9 +165,13 @@ function getFileExtension(contentType) {
   return 'webm';
 }
 
-async function tryUploadRecordingToStorage(supabase, file, contentType, meetingCode, bucketName) {
+async function persistRecordingArtifact(supabase, file, contentType, meetingCode, bucketName) {
   if (!bucketName) {
-    return null;
+    return {
+      audioUrl: await buildEmbeddedAudioDataUrl(file),
+      mode: 'embedded',
+      error: 'Supabase Storage is not configured for meeting audio.',
+    };
   }
 
   try {
@@ -174,13 +184,35 @@ async function tryUploadRecordingToStorage(supabase, file, contentType, meetingC
     });
 
     if (uploadResult.error) {
-      return null;
+      return {
+        audioUrl: await buildEmbeddedAudioDataUrl(file),
+        mode: 'embedded',
+        error: uploadResult.error.message || 'Supabase Storage rejected the meeting audio upload.',
+      };
     }
 
     const { data: publicUrlData } = supabase.storage.from(bucketName).getPublicUrl(storagePath);
-    return publicUrlData?.publicUrl || null;
-  } catch {
-    return null;
+    const audioUrl = publicUrlData?.publicUrl || '';
+
+    if (audioUrl) {
+      return {
+        audioUrl,
+        mode: 'storage',
+        error: '',
+      };
+    }
+
+    return {
+      audioUrl: await buildEmbeddedAudioDataUrl(file),
+      mode: 'embedded',
+      error: 'Supabase Storage uploaded the audio, but Momentum could not build a playback URL.',
+    };
+  } catch (error) {
+    return {
+      audioUrl: await buildEmbeddedAudioDataUrl(file),
+      mode: 'embedded',
+      error: error?.message || 'Supabase Storage could not save the meeting audio.',
+    };
   }
 }
 
@@ -214,7 +246,12 @@ async function transcribeRecording(file, groqKey) {
 
 async function analyzeTranscriptWithFallback(transcript, geminiKey, sourceMetadata) {
   try {
-    return await analyzeTranscript(transcript, geminiKey, sourceMetadata);
+    const analysis = await analyzeTranscript(transcript, geminiKey, sourceMetadata);
+    if (shouldDowngradeToFallbackAnalysis(analysis, transcript)) {
+      return buildFallbackAnalysis(transcript, sourceMetadata);
+    }
+
+    return analysis;
   } catch {
     return buildFallbackAnalysis(transcript, sourceMetadata);
   }
@@ -356,6 +393,12 @@ export function buildFallbackAnalysis(transcript, sourceMetadata = {}) {
 async function saveMeetingRecord(supabase, meeting, options = {}) {
   const existingMeetingId = String(options?.existingMeetingId || '').trim();
   const legacyTables = await getLegacyTableNames(supabase);
+  const sourceMetadata = options?.sourceMetadata || {};
+  const audioPersistence = options?.audioPersistence || {};
+  const summaryWithMetadata = buildLegacySummaryWithMetadata(meeting.summary, sourceMetadata, {
+    audioMode: audioPersistence.mode,
+    audioError: audioPersistence.error,
+  });
 
   if (existingMeetingId) {
     const { data: existingMeeting, error: existingError } = await supabase
@@ -372,7 +415,7 @@ async function saveMeetingRecord(supabase, meeting, options = {}) {
       .from(legacyTables.meetings)
       .update({
         title: meeting.title,
-        summary: meeting.summary,
+        summary: summaryWithMetadata,
         transcript: meeting.transcript,
         clarity: meeting.clarity,
         actionability: meeting.actionability,
@@ -381,9 +424,9 @@ async function saveMeetingRecord(supabase, meeting, options = {}) {
         ...((legacyTables.meetings === 'meetings' && (await supportsV2WorkspaceSchema(supabase)))
           ? {
               ai_title: meeting.title,
-              source_meeting_label: meeting.title,
-              summary_paragraph: meeting.summary,
-              summary_markdown: meeting.summary,
+              source_meeting_label: cleanLegacyMetadataField(sourceMetadata?.meetingLabel) || meeting.title,
+              summary_paragraph: sanitizeLegacySummaryForDisplay(summaryWithMetadata),
+              summary_markdown: sanitizeLegacySummaryForDisplay(summaryWithMetadata),
               transcript_text: meeting.transcript,
               audio_storage_path:
                 meeting.audioUrl || existingMeeting.audio_url || options?.existingAudioUrl || null,
@@ -424,7 +467,7 @@ async function saveMeetingRecord(supabase, meeting, options = {}) {
       .from(legacyTables.meetings)
       .update({
         title: meeting.title,
-        summary: meeting.summary,
+        summary: summaryWithMetadata,
         transcript: meeting.transcript,
         clarity: meeting.clarity,
         actionability: meeting.actionability,
@@ -450,7 +493,7 @@ async function saveMeetingRecord(supabase, meeting, options = {}) {
     .from(legacyTables.meetings)
     .insert({
       title: meeting.title,
-      summary: meeting.summary,
+      summary: summaryWithMetadata,
       transcript: meeting.transcript,
       clarity: meeting.clarity,
       actionability: meeting.actionability,
@@ -608,6 +651,22 @@ function normalizeAnalysis(analysis, transcript = '', sourceMetadata = {}) {
       ownerResolution.ownerResolutionRisks
     ),
   };
+}
+
+function shouldDowngradeToFallbackAnalysis(analysis, transcript) {
+  const sentences = splitTranscriptIntoSentences(transcript);
+  if (!sentences.length || isLowSignalTranscript(transcript, sentences)) {
+    return true;
+  }
+
+  const wordCount = String(transcript || '')
+    .match(/[a-z0-9]+/gi)?.length || 0;
+
+  if (wordCount < 18 && (analysis?.tasks?.length || 0) === 0) {
+    return true;
+  }
+
+  return false;
 }
 
 function normalizeTask(task) {
@@ -1182,6 +1241,62 @@ function sanitizeMeetingCode(value) {
 
 function sanitizeFileName(fileName) {
   return String(fileName || 'meeting.webm').replace(/[^a-zA-Z0-9._-]/g, '_');
+}
+
+async function buildEmbeddedAudioDataUrl(file) {
+  if (!(file instanceof Blob) || Number(file.size || 0) <= 0 || Number(file.size || 0) > MAX_EMBEDDED_AUDIO_BYTES) {
+    return null;
+  }
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const contentType = String(file.type || 'audio/webm').trim() || 'audio/webm';
+  return `data:${contentType};base64,${buffer.toString('base64')}`;
+}
+
+function buildLegacySummaryWithMetadata(summary, sourceMetadata = {}, extraMetadata = {}) {
+  const visibleSummary = sanitizeLegacySummaryForDisplay(summary);
+  const metadata = {
+    sourcePlatform: cleanLegacyMetadataField(sourceMetadata?.sourcePlatform),
+    meetingCode: sanitizeMeetingCode(sourceMetadata?.meetingCode),
+    meetingUrl: cleanLegacyMetadataField(sourceMetadata?.meetingUrl),
+    meetingLabel: cleanLegacyMetadataField(sourceMetadata?.meetingLabel),
+    participantNames: dedupeNames(sourceMetadata?.participantNames),
+    recordingStartedAt: cleanLegacyMetadataField(sourceMetadata?.recordingStartedAt),
+    recordingStoppedAt: cleanLegacyMetadataField(sourceMetadata?.recordingStoppedAt),
+    connectionTokenPresent: Boolean(cleanLegacyMetadataField(sourceMetadata?.connectionToken)),
+    workspaceId: cleanLegacyMetadataField(sourceMetadata?.workspaceId),
+    userId: cleanLegacyMetadataField(sourceMetadata?.userId),
+    extensionVersion: cleanLegacyMetadataField(sourceMetadata?.extensionVersion),
+    audioMode: cleanLegacyMetadataField(extraMetadata?.audioMode),
+    audioError: cleanLegacyMetadataField(extraMetadata?.audioError),
+  };
+  const hasMetadata = Object.values(metadata).some((value) =>
+    Array.isArray(value) ? value.length > 0 : Boolean(value)
+  );
+
+  if (!hasMetadata) {
+    return visibleSummary;
+  }
+
+  return [visibleSummary, `${LEGACY_METADATA_MARKER} ${JSON.stringify(metadata)}`]
+    .filter(Boolean)
+    .join('\n\n');
+}
+
+function sanitizeLegacySummaryForDisplay(summary) {
+  const text = String(summary || '').trim();
+  const markerIndex = text.lastIndexOf(LEGACY_METADATA_MARKER);
+
+  if (markerIndex === -1) {
+    return text;
+  }
+
+  return text.slice(0, markerIndex).trim();
+}
+
+function cleanLegacyMetadataField(value) {
+  const text = String(value || '').trim();
+  return text || '';
 }
 
 async function readErrorMessage(response, fallback) {
