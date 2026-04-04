@@ -3,6 +3,13 @@ const statusDetail = document.getElementById("status-detail");
 const pipelineText = document.getElementById("pipeline-text");
 const activateButton = document.getElementById("activate-btn");
 const shortcutText = document.getElementById("shortcut-text");
+const apiBaseUrlInput = document.getElementById("api-base-url");
+const workspaceIdInput = document.getElementById("workspace-id");
+const userIdInput = document.getElementById("user-id");
+const connectionTokenInput = document.getElementById("connection-token");
+const saveConfigButton = document.getElementById("save-config-btn");
+const configStatus = document.getElementById("config-status");
+const extensionVersionBadge = document.getElementById("extension-version");
 
 let activationInFlight = false;
 let autoActivationAttempted = false;
@@ -13,8 +20,19 @@ activateButton.onclick = async () => {
   await activateMomentum({ auto: false, source: "button" });
 };
 
+saveConfigButton?.addEventListener("click", async () => {
+  await saveUploadConfig();
+});
+
 async function bootPopup() {
-  await hydratePopupState().catch(() => {});
+  if (extensionVersionBadge) {
+    extensionVersionBadge.innerText = `v${chrome.runtime.getManifest().version}`;
+  }
+
+  await Promise.all([
+    hydratePopupState().catch(() => {}),
+    hydrateUploadConfig().catch(() => {}),
+  ]);
 
   const contextResponse = await sendRuntimeMessage({
     type: "GET_POPUP_ENTRY_CONTEXT",
@@ -23,21 +41,24 @@ async function bootPopup() {
 
   if (popupContext?.mode === "programmatic") {
     statusText.style.color = "#cbd5e1";
-    statusText.innerText = "Capture panel opened";
+    statusText.innerText = "Recorder opened from Meet";
     statusDetail.innerText =
-      "Momentum opened from the in-meeting prompt. Press Activate here if Chrome did not begin capture automatically.";
+      "Momentum opened from the in-meeting prompt and will try to begin capture automatically.";
     pipelineText.innerText =
-      "Programmatic popup open detected. Waiting for an explicit capture action inside the panel.";
-    return;
+      "Meet prompt handoff detected. Secure recorder handshake starting from the popup.";
   }
 
   setTimeout(() => {
-    maybeAutoActivate().catch(() => {});
-  }, 120);
+    maybeAutoActivate(popupContext).catch(() => {});
+  }, popupContext?.mode === "programmatic" ? 80 : 120);
 }
 
-async function maybeAutoActivate() {
+async function maybeAutoActivate(popupContext = null) {
   if (autoActivationAttempted || activationInFlight) {
+    return;
+  }
+
+  if (popupContext && popupContext.autoActivate === false) {
     return;
   }
 
@@ -57,7 +78,7 @@ async function maybeAutoActivate() {
     return;
   }
 
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const tab = await resolveTargetMeetTab(popupContext);
   if (!tab?.id || !String(tab.url || "").includes("meet.google.com")) {
     return;
   }
@@ -66,15 +87,26 @@ async function maybeAutoActivate() {
     type: "GET_MEETING_STATE",
   }).catch(() => null);
 
-  if (!meetingState?.onMeetingUrl || !meetingState?.inMeeting) {
+  const meetingCode = meetingState?.meetingCode || popupContext?.meetingCode || getMeetingCode(tab.url);
+  if (!meetingState?.onMeetingUrl && !meetingCode) {
     return;
   }
 
   autoActivationAttempted = true;
-  await activateMomentum({ auto: true, source: "popup-open" });
+  await activateMomentum({
+    auto: true,
+    source: popupContext?.source || "popup-open",
+    tabHint: tab,
+    metadataHint: popupContext,
+  });
 }
 
-async function activateMomentum({ auto = false, source = "button" } = {}) {
+async function activateMomentum({
+  auto = false,
+  source = "button",
+  tabHint = null,
+  metadataHint = null,
+} = {}) {
   if (activationInFlight) {
     return;
   }
@@ -95,21 +127,34 @@ async function activateMomentum({ auto = false, source = "button" } = {}) {
       ? "Popup opened from an extension invocation. Recorder handshake in progress."
       : "Recorder request in progress.";
 
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const tab = tabHint || (await resolveTargetMeetTab(metadataHint));
     if (!tab?.id || !tab.url?.includes("meet.google.com")) {
       throw new Error("Open a live Google Meet call before activating Momentum.");
     }
 
-    const meetingState = await sendTabMessage(tab.id, { type: "GET_MEETING_STATE" });
+    const meetingState = await sendTabMessage(tab.id, { type: "GET_MEETING_STATE" }).catch(
+      () => null
+    );
     const meetingMetadata = await sendTabMessage(tab.id, {
       type: "GET_MEETING_METADATA",
     }).catch(() => ({}));
+    const meetingCode =
+      meetingState?.meetingCode ||
+      meetingMetadata?.meetingCode ||
+      metadataHint?.meetingCode ||
+      getMeetingCode(tab.url);
+    const meetingLabel =
+      String(meetingMetadata?.meetingLabel || metadataHint?.meetingLabel || "").trim();
+    const participantNames = mergeParticipantNames(
+      meetingMetadata?.participantNames,
+      metadataHint?.participantNames
+    );
 
-    if (!meetingState?.onMeetingUrl) {
+    if (!meetingState?.onMeetingUrl && !meetingCode) {
       throw new Error("Open a Google Meet meeting link before activating Momentum.");
     }
 
-    if (!meetingState?.inMeeting) {
+    if (meetingState && !meetingState.inMeeting) {
       statusText.style.color = "#fde68a";
       statusText.innerText = "Meet tab detected";
       statusDetail.innerText =
@@ -128,11 +173,10 @@ async function activateMomentum({ auto = false, source = "button" } = {}) {
     const response = await sendRuntimeMessage({
       type: "START_SILENT_RECORDING_EXTERNAL",
       tabId: tab.id,
-      meetingCode: meetingState.meetingCode,
-      meetingLabel: meetingMetadata.meetingLabel || "",
-      participantNames: Array.isArray(meetingMetadata.participantNames)
-        ? meetingMetadata.participantNames
-        : [],
+      meetingCode,
+      meetingUrl: String(tab.url || metadataHint?.meetingUrl || ""),
+      meetingLabel,
+      participantNames,
       source,
     });
 
@@ -272,6 +316,100 @@ function renderRuntimeStatus(runtime) {
   activateButton.innerText = "Activate Momentum";
 }
 
+async function hydrateUploadConfig() {
+  if (!apiBaseUrlInput || !workspaceIdInput || !userIdInput || !connectionTokenInput) {
+    return;
+  }
+
+  const response = await sendRuntimeMessage({
+    type: "GET_EXTENSION_UPLOAD_CONFIG",
+  }).catch(() => null);
+
+  const config = response?.ok ? response.config || {} : {};
+  apiBaseUrlInput.value = String(config.apiBaseUrl || "");
+  workspaceIdInput.value = String(config.workspaceId || "");
+  userIdInput.value = String(config.userId || "");
+  connectionTokenInput.value = String(config.connectionToken || "");
+  renderUploadConfigStatus(config, false);
+}
+
+async function saveUploadConfig() {
+  if (!saveConfigButton) {
+    return;
+  }
+
+  const nextConfig = {
+    apiBaseUrl: String(apiBaseUrlInput?.value || "").trim().replace(/\/+$/, ""),
+    workspaceId: String(workspaceIdInput?.value || "").trim(),
+    userId: String(userIdInput?.value || "").trim(),
+    connectionToken: String(connectionTokenInput?.value || "").trim(),
+  };
+
+  saveConfigButton.disabled = true;
+  saveConfigButton.innerText = "Saving...";
+
+  try {
+    const response = await sendRuntimeMessage({
+      type: "SET_EXTENSION_UPLOAD_CONFIG",
+      config: nextConfig,
+    });
+
+    if (!response?.ok) {
+      throw new Error(response?.error || "Momentum could not save the workspace link.");
+    }
+
+    renderUploadConfigStatus(response.config || nextConfig, true);
+  } catch (error) {
+    renderUploadConfigError(
+      error?.message || "Momentum could not save the workspace link."
+    );
+  } finally {
+    saveConfigButton.disabled = false;
+    saveConfigButton.innerText = "Save workspace link";
+  }
+}
+
+function renderUploadConfigStatus(config, saved) {
+  if (!configStatus) {
+    return;
+  }
+
+  configStatus.style.color = "#9fb0c8";
+
+  if (config?.apiBaseUrl) {
+    configStatus.innerText = saved
+      ? `Workspace link saved. Uploads will use ${config.apiBaseUrl}.`
+      : `Uploads currently point to ${config.apiBaseUrl}.`;
+    return;
+  }
+
+  if (config?.connectionToken) {
+    configStatus.innerText = saved
+      ? "Workspace link saved. New uploads will include the saved connection token."
+      : "Workspace link ready. New uploads will include the saved connection token.";
+    return;
+  }
+
+  if (config?.workspaceId || config?.userId) {
+    configStatus.innerText = saved
+      ? "Workspace identifiers saved. Add a connection token later if you want tighter workspace routing."
+      : "Workspace identifiers are present. Add a connection token later if you want tighter workspace routing.";
+    return;
+  }
+
+  configStatus.innerText =
+    "Optional: save a workspace link so uploads stay tied to the right Momentum workspace.";
+}
+
+function renderUploadConfigError(message) {
+  if (!configStatus) {
+    return;
+  }
+
+  configStatus.style.color = "#fca5a5";
+  configStatus.innerText = message;
+}
+
 function buildPipelineText(session, pendingSummary) {
   const parts = [];
 
@@ -352,4 +490,38 @@ function sendTabMessage(tabId, message) {
       resolve(response);
     });
   });
+}
+
+async function resolveTargetMeetTab(context = null) {
+  if (context?.tabId) {
+    const hintedTab = await chrome.tabs.get(context.tabId).catch(() => null);
+    if (hintedTab?.id) {
+      return hintedTab;
+    }
+  }
+
+  const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  return activeTab || null;
+}
+
+function getMeetingCode(url) {
+  const match = String(url || "").match(/meet\.google\.com\/([a-z]{3}-[a-z]{4}-[a-z]{3})/i);
+  return match ? match[1].toLowerCase() : "";
+}
+
+function mergeParticipantNames(...groups) {
+  const names = new Map();
+
+  groups
+    .flat()
+    .map((value) => String(value || "").replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .forEach((name) => {
+      const key = name.toLowerCase();
+      if (!names.has(key)) {
+        names.set(key, name);
+      }
+    });
+
+  return Array.from(names.values()).slice(0, 30);
 }

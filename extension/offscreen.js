@@ -15,10 +15,13 @@ chrome.runtime.sendMessage({
 }).catch(() => {});
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === "OFFSCREEN_PING") {
+    chrome.runtime.sendMessage({ type: "OFFSCREEN_READY" }).catch(() => {});
+    sendResponse({ ok: true, ready: true });
+    return false;
+  }
+
   if (message.target !== "offscreen") {
-    if (message.type === "OFFSCREEN_PING") {
-      chrome.runtime.sendMessage({ type: "OFFSCREEN_READY" }).catch(() => {});
-    }
     return false;
   }
 
@@ -59,6 +62,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === "UPDATE_RECORDING_METADATA") {
+    updateActiveSessionMetadata(message)
+      .then(() => sendResponse({ ok: true }))
+      .catch((error) => sendResponse({ ok: false, error: error.message }));
+    return true;
+  }
+
   if (message.type === "PROCESS_PENDING_UPLOADS") {
     recoverPendingSessions()
       .then(() => sendResponse({ ok: true }))
@@ -83,6 +93,7 @@ async function startRecordingSession({
   meetingUrl,
   meetingLabel,
   participantNames,
+  apiBaseUrl,
   extensionVersion,
   connectionToken,
   workspaceId,
@@ -108,11 +119,13 @@ async function startRecordingSession({
       ENGINE_START_TIMEOUT_MS,
       "Chrome granted capture, but the meeting audio stream never opened."
     );
+    const microphoneStream = await getOptionalMicrophoneStream();
 
     const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
       ? "audio/webm;codecs=opus"
       : "audio/webm";
-    const recorder = new MediaRecorder(stream, { mimeType });
+    const captureRouter = await createCaptureRouter(stream, microphoneStream);
+    const recorder = new MediaRecorder(captureRouter.recordingStream, { mimeType });
 
     let resolveStop;
     let rejectStop;
@@ -129,12 +142,15 @@ async function startRecordingSession({
       meetingUrl,
       meetingLabel: String(meetingLabel || ""),
       participantNames: Array.isArray(participantNames) ? participantNames : [],
+      apiBaseUrl: String(apiBaseUrl || "").trim().replace(/\/+$/, ""),
       connectionToken: String(connectionToken || ""),
       workspaceId: String(workspaceId || ""),
       userId: String(userId || ""),
       mimeType,
       extensionVersion: safeExtensionVersion(extensionVersion),
       stream,
+      microphoneStream,
+      liveMonitor: captureRouter,
       recorder,
       pendingWrites: new Set(),
       nextChunkIndex: 0,
@@ -154,6 +170,7 @@ async function startRecordingSession({
       meetingUrl,
       meetingLabel: String(meetingLabel || ""),
       participantNames: Array.isArray(participantNames) ? participantNames : [],
+      apiBaseUrl: String(apiBaseUrl || "").trim().replace(/\/+$/, ""),
       connectionToken: String(connectionToken || ""),
       workspaceId: String(workspaceId || ""),
       userId: String(userId || ""),
@@ -311,7 +328,9 @@ async function startRecordingSession({
       sessionId,
       chunkCount: 0,
       savedLocally: false,
-      detail: "Saving secure 5-second recovery chunks on this device while you stay in the meeting.",
+      detail: microphoneStream
+        ? "Saving secure 5-second recovery chunks for tab audio and your local microphone."
+        : "Saving secure 5-second recovery chunks on this device while you stay in the meeting.",
     };
     chrome.runtime.sendMessage(startedPayload).catch(() => {});
     return {
@@ -458,7 +477,7 @@ async function uploadAudioThroughServer(file, session, mimeType) {
     formData.append("participantNames", name);
   });
 
-  const response = await fetch(PROCESS_UPLOAD_URL, {
+  const response = await fetch(resolveProcessUploadUrl(session.apiBaseUrl), {
     method: "POST",
     body: formData,
   });
@@ -511,11 +530,62 @@ function hasRecoverableAudio(session) {
   return Number(session?.chunkCount || 0) > 0;
 }
 
+async function updateActiveSessionMetadata(message = {}) {
+  if (!activeSession || !message) {
+    return;
+  }
+
+  const nextMeetingCode = String(message.meetingCode || activeSession.meetingCode || "").trim();
+  const nextMeetingUrl = String(message.meetingUrl || activeSession.meetingUrl || "").trim();
+  const nextMeetingLabel = String(message.meetingLabel || activeSession.meetingLabel || "").trim();
+  const nextParticipantNames = mergeParticipantNames(
+    activeSession.participantNames,
+    message.participantNames
+  );
+
+  activeSession.meetingCode = nextMeetingCode;
+  activeSession.meetingUrl = nextMeetingUrl;
+  activeSession.meetingLabel = nextMeetingLabel;
+  activeSession.participantNames = nextParticipantNames;
+
+  await touchStoredSession(activeSession.sessionId, {
+    meetingCode: nextMeetingCode,
+    meetingUrl: nextMeetingUrl,
+    meetingLabel: nextMeetingLabel,
+    participantNames: nextParticipantNames,
+    updatedAt: Date.now(),
+  });
+}
+
 function cleanupLiveSession() {
   if (!activeSession) {
     return;
   }
 
+  try {
+    activeSession.liveMonitor?.sourceNode?.disconnect();
+    activeSession.liveMonitor?.microphoneSourceNode?.disconnect();
+    activeSession.liveMonitor?.microphoneGainNode?.disconnect();
+    activeSession.liveMonitor?.playbackGainNode?.disconnect();
+    activeSession.liveMonitor?.recordingDestination?.disconnect?.();
+    activeSession.liveMonitor?.audioContext?.close?.();
+    if (activeSession.liveMonitor?.playbackElement) {
+      activeSession.liveMonitor.playbackElement.pause();
+      activeSession.liveMonitor.playbackElement.srcObject = null;
+      activeSession.liveMonitor.playbackElement.remove();
+    }
+  } catch (_) {}
+
+  activeSession.liveMonitor?.recordingStream?.getTracks?.().forEach((track) => {
+    try {
+      track.stop();
+    } catch (_) {}
+  });
+  activeSession.microphoneStream?.getTracks?.().forEach((track) => {
+    try {
+      track.stop();
+    } catch (_) {}
+  });
   activeSession.stream?.getTracks().forEach((track) => track.stop());
   activeSession = null;
 }
@@ -766,6 +836,32 @@ function sanitizeMeetingCode(value) {
   return String(value || "").trim().replace(/[^a-z0-9-]/gi, "").slice(0, 32);
 }
 
+function resolveProcessUploadUrl(apiBaseUrl) {
+  const baseUrl = String(apiBaseUrl || "").trim().replace(/\/+$/, "");
+  if (baseUrl) {
+    return `${baseUrl}/api/process-meeting-upload`;
+  }
+
+  return PROCESS_UPLOAD_URL;
+}
+
+function mergeParticipantNames(...groups) {
+  const names = new Map();
+
+  groups
+    .flat()
+    .map((value) => String(value || "").replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .forEach((name) => {
+      const key = name.toLowerCase();
+      if (!names.has(key)) {
+        names.set(key, name);
+      }
+    });
+
+  return Array.from(names.values()).slice(0, 30);
+}
+
 function safeExtensionVersion(explicitVersion) {
   const provided = String(explicitVersion || "").trim();
   if (provided) {
@@ -776,6 +872,152 @@ function safeExtensionVersion(explicitVersion) {
     return chrome?.runtime?.getManifest?.()?.version || FALLBACK_EXTENSION_VERSION;
   } catch {
     return FALLBACK_EXTENSION_VERSION;
+  }
+}
+
+async function createCaptureRouter(stream, microphoneStream = null) {
+  const playbackElement = await createPlaybackElement(stream);
+  const recordingStream =
+    typeof stream?.clone === "function" ? stream.clone() : stream;
+
+  const shouldMixMicrophone =
+    microphoneStream?.getAudioTracks?.().length > 0 && typeof AudioContext === "function";
+
+  if (shouldMixMicrophone) {
+    try {
+      const audioContext = new AudioContext();
+      const sourceNode = audioContext.createMediaStreamSource(stream);
+      const recordingDestination = audioContext.createMediaStreamDestination();
+      const microphoneSourceNode = audioContext.createMediaStreamSource(microphoneStream);
+      const microphoneGainNode = audioContext.createGain();
+      let playbackGainNode = null;
+
+      sourceNode.connect(recordingDestination);
+      microphoneGainNode.gain.value = 1;
+      microphoneSourceNode.connect(microphoneGainNode);
+      microphoneGainNode.connect(recordingDestination);
+
+      if (!playbackElement) {
+        playbackGainNode = audioContext.createGain();
+        playbackGainNode.gain.value = 1;
+        sourceNode.connect(playbackGainNode);
+        playbackGainNode.connect(audioContext.destination);
+      }
+
+      if (audioContext.state === "suspended") {
+        await audioContext.resume().catch(() => {});
+      }
+
+      return {
+        audioContext,
+        sourceNode,
+        microphoneSourceNode,
+        microphoneGainNode,
+        playbackGainNode,
+        recordingDestination,
+        playbackElement,
+        recordingStream: recordingDestination.stream,
+      };
+    } catch {
+      microphoneStream.getTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch (_) {}
+      });
+    }
+  }
+
+  if (playbackElement || typeof AudioContext !== "function") {
+    return {
+      audioContext: null,
+      sourceNode: null,
+      microphoneSourceNode: null,
+      microphoneGainNode: null,
+      playbackGainNode: null,
+      recordingDestination: null,
+      playbackElement,
+      recordingStream,
+    };
+  }
+
+  try {
+    const audioContext = new AudioContext();
+    const sourceNode = audioContext.createMediaStreamSource(stream);
+    const playbackGainNode = audioContext.createGain();
+
+    if (playbackGainNode) {
+      playbackGainNode.gain.value = 1;
+      sourceNode.connect(playbackGainNode);
+      playbackGainNode.connect(audioContext.destination);
+    }
+
+    if (audioContext.state === "suspended") {
+      await audioContext.resume().catch(() => {});
+    }
+
+    return {
+      audioContext,
+      sourceNode,
+      microphoneSourceNode: null,
+      microphoneGainNode: null,
+      playbackGainNode,
+      recordingDestination: null,
+      playbackElement,
+      recordingStream,
+    };
+  } catch {
+    return {
+      audioContext: null,
+      sourceNode: null,
+      microphoneSourceNode: null,
+      microphoneGainNode: null,
+      playbackGainNode: null,
+      recordingDestination: null,
+      playbackElement,
+      recordingStream,
+    };
+  }
+}
+
+async function createPlaybackElement(stream) {
+  try {
+    const playbackElement = document.createElement("audio");
+    playbackElement.autoplay = true;
+    playbackElement.muted = false;
+    playbackElement.playsInline = true;
+    playbackElement.style.display = "none";
+    playbackElement.srcObject = stream;
+    document.body.appendChild(playbackElement);
+    const started = await playbackElement
+      .play()
+      .then(() => true)
+      .catch(() => false);
+    if (!started) {
+      playbackElement.remove();
+      return null;
+    }
+    return playbackElement;
+  } catch {
+    return null;
+  }
+}
+
+async function getOptionalMicrophoneStream() {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    return null;
+  }
+
+  try {
+    return await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+      video: false,
+    });
+  } catch {
+    return null;
   }
 }
 

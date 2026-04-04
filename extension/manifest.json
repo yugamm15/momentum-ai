@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Momentum AI",
-  "version": "1.6",
+  "version": "1.8",
   "description": "Professional Silent Meeting Intelligence.",
   "permissions": [
     "activeTab",
@@ -13,10 +13,13 @@
   ],
   "host_permissions": [
     "https://meet.google.com/*",
-    "https://momentum-ai-meet.vercel.app/*"
+    "https://momentum-ai-meet.vercel.app/*",
+    "https://*.vercel.app/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
   ],
   "action": {
-    "default_popup": "popup.html",
+    "default_title": "Start Momentum on this Google Meet tab",
     "default_icon": "logo.png"
   },
   "commands": {

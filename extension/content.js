@@ -37,10 +37,22 @@ const PARTICIPANT_BLACKLIST = [
   'me',
   'stop and process',
   'momentum ai',
+  'mic',
+  'microphone',
+  'camera',
+  'videocam',
+  'turn off camera',
+  'turn off microphone',
+  'left side panel',
+  'meeting tools',
+  'apps',
+  'getting items',
+  'side panel',
+  'send a reaction',
 ];
 const PARTICIPANT_LABEL_PATTERNS = [
-  /^(.*?)['’]s microphone\b/i,
-  /^(.*?)['’]s camera\b/i,
+  /^(.*?)['\u2019]s microphone\b/i,
+  /^(.*?)['\u2019]s camera\b/i,
   /^pin (.*?)\b/i,
   /^more actions for (.*?)$/i,
   /^send message to (.*?)$/i,
@@ -88,7 +100,14 @@ document.addEventListener(
 
     const label = getElementLabel(button);
     if (isEndCallControl(button, label)) {
-      safeSendRuntimeMessage({ type: "MEETING_LEAVE_TRIGGERED" });
+      const metadata = getMeetingMetadata();
+      safeSendRuntimeMessage({
+        type: "MEETING_LEAVE_TRIGGERED",
+        meetingCode: metadata.meetingCode,
+        meetingLabel: metadata.meetingLabel || "",
+        meetingUrl: location.href,
+        participantNames: Array.isArray(metadata.participantNames) ? metadata.participantNames : [],
+      });
     }
   },
   true
@@ -248,38 +267,17 @@ function showStartPrompt(meetingCode) {
   prompt.innerHTML = `
     <div style="font-size:11px;font-weight:800;letter-spacing:0.14em;text-transform:uppercase;color:#60a5fa;margin-bottom:8px;">Momentum AI</div>
     <div style="font-size:20px;font-weight:800;line-height:1.2;margin-bottom:8px;">Bring Momentum into this meeting?</div>
-    <div id="momentum-start-copy" style="font-size:13px;line-height:1.5;color:#cbd5e1;margin-bottom:16px;">Momentum records this meeting only after you start it. If Chrome allows it, Momentum will open the capture panel and begin automatically. If not, use the toolbar icon once or press Alt+Shift+M.</div>
+    <div id="momentum-start-copy" style="font-size:13px;line-height:1.5;color:#cbd5e1;margin-bottom:16px;">Momentum records this meeting only after you start it. To begin securely, click the Momentum extension icon in the browser toolbar or press Alt+Shift+M while this Meet tab is focused.</div>
     <div style="display:flex;gap:10px;">
-      <button id="momentum-start-now" style="flex:1;background:#2563eb;color:#fff;border:none;border-radius:14px;padding:12px 14px;font-weight:800;cursor:pointer;">Start Momentum</button>
+      <button id="momentum-start-now" style="flex:1;background:#2563eb;color:#fff;border:none;border-radius:14px;padding:12px 14px;font-weight:800;cursor:pointer;">Got it</button>
       <button id="momentum-dismiss-prompt" style="background:transparent;color:#cbd5e1;border:1px solid #334155;border-radius:14px;padding:12px 14px;font-weight:700;cursor:pointer;">Later</button>
     </div>
   `;
   document.body.appendChild(prompt);
 
   prompt.querySelector("#momentum-start-now").onclick = async () => {
-    const startButton = prompt.querySelector("#momentum-start-now");
-    const copy = prompt.querySelector("#momentum-start-copy");
-    startButton.disabled = true;
-    startButton.textContent = "Opening...";
-
-    try {
-      const response = await sendRuntimeMessage({
-        type: "OPEN_CAPTURE_POPUP",
-      });
-
-      startButton.disabled = false;
-      startButton.textContent = "Start Momentum";
-      if (response?.opened) {
-        removeStartPrompt();
-      }
-      copy.textContent =
-        response.detail ||
-        "Momentum is opening the capture panel now.";
-    } catch (error) {
-      startButton.disabled = false;
-      startButton.textContent = "Start Momentum";
-      copy.textContent = error.message;
-    }
+    promptDismissedForMeeting = meetingCode;
+    removeStartPrompt();
   };
 
   prompt.querySelector("#momentum-dismiss-prompt").onclick = () => {
@@ -501,6 +499,9 @@ function detectMeetingLabel() {
 
 function detectParticipantNames() {
   const selectors = [
+    '[data-participant-name]',
+    '[data-display-name]',
+    '[data-name]',
     '[data-participant-id] [dir="auto"]',
     '[data-participant-id] span',
     '[role="listitem"] [dir="auto"]',
@@ -509,8 +510,6 @@ function detectParticipantNames() {
     'aside span',
     '[data-self-name]',
     '[data-requested-participant-id] [dir="auto"]',
-    '[aria-label*="microphone" i]',
-    '[aria-label*="camera" i]',
     '[aria-label*="more actions for" i]',
   ];
   const names = new Map();
@@ -539,6 +538,9 @@ function detectParticipantNames() {
         addCandidate(text, 1);
       }
 
+      extractParticipantNamesFromDataset(element).forEach((candidate) =>
+        addCandidate(candidate, 0.98)
+      );
       extractParticipantNamesFromLabel(getElementLabel(element)).forEach((candidate) =>
         addCandidate(candidate, 0.94)
       );
@@ -619,17 +621,31 @@ function isLikelyParticipantName(text) {
     return false;
   }
 
-  return /^[a-zA-Z][a-zA-Z.' -]+$/.test(value);
+  if (
+    PARTICIPANT_BLACKLIST.some((token) => token.length > 3 && lower.includes(token)) ||
+    /\b(turn off|meeting details|side panel|host controls|send a reaction|more actions|present now|activities|captions|people|apps)\b/i.test(value)
+  ) {
+    return false;
+  }
+
+  return /^[\p{L}][\p{L}.' -]+$/u.test(value);
 }
 
 function sanitizeParticipantName(text) {
-  return String(text || '')
+  const cleaned = String(text || '')
     .replace(/\s+/g, ' ')
     .replace(/^you\b[:, -]*/i, '')
     .replace(/\(you\)/gi, '')
-    .replace(/['’]s microphone.*$/i, '')
-    .replace(/['’]s camera.*$/i, '')
+    .replace(/['\u2019]s microphone.*$/i, '')
+    .replace(/['\u2019]s camera.*$/i, '')
     .trim();
+
+  const repeatedHalf = cleaned.match(/^(.{2,})\1$/);
+  if (repeatedHalf) {
+    return repeatedHalf[1].trim();
+  }
+
+  return cleaned;
 }
 
 function extractParticipantNamesFromLabel(label) {
@@ -650,6 +666,24 @@ function extractParticipantNamesFromLabel(label) {
   if (isLikelyParticipantName(value)) {
     matches.push(value);
   }
+
+  return Array.from(new Set(matches.map((name) => sanitizeParticipantName(name)).filter(Boolean)));
+}
+
+function extractParticipantNamesFromDataset(element) {
+  if (!element?.attributes) {
+    return [];
+  }
+
+  const matches = [];
+  ["data-participant-name", "data-display-name", "data-name", "data-self-name"].forEach(
+    (attribute) => {
+      const value = element.getAttribute(attribute);
+      if (isLikelyParticipantName(value)) {
+        matches.push(value);
+      }
+    }
+  );
 
   return Array.from(new Set(matches.map((name) => sanitizeParticipantName(name)).filter(Boolean)));
 }
@@ -724,13 +758,21 @@ function isExtensionContextInvalidated(error) {
 }
 
 function handleExtensionContextInvalidated() {
+  if (extensionContextBroken) {
+    return;
+  }
+
   extensionContextBroken = true;
   clearTimeout(promptEvaluationTimeout);
   clearInterval(timerInterval);
   clearInterval(watcherInterval);
   meetingObserver?.disconnect();
   removeStartPrompt();
-  removeHud();
+  if (typeof removeHud === "function") {
+    removeHud();
+  } else {
+    document.getElementById("momentum-hud")?.remove();
+  }
 }
 
 function removeHud() {
@@ -739,3 +781,4 @@ function removeHud() {
     hud.remove();
   }
 }
+

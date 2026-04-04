@@ -3,6 +3,7 @@ const OFFSCREEN_REASON = "Capture and process Google Meet audio.";
 const RUNTIME_STATUS_KEY = "momentum-runtime-status";
 const CAPTURE_START_TIMEOUT_MS = 12000;
 const OFFSCREEN_READY_TIMEOUT_MS = 5000;
+const OFFSCREEN_PING_INTERVAL_MS = 250;
 const RETRY_ALARM_NAME = "momentum-pending-upload-retry";
 const RETRY_INTERVAL_MINUTES = 3;
 const EXTENSION_UPLOAD_CONFIG_KEY = "momentum-extension-upload-config";
@@ -14,6 +15,7 @@ let currentSession = null;
 let lastSession = null;
 let pendingSummary = createEmptyPendingSummary();
 let popupEntryContext = null;
+let offscreenReadyAt = 0;
 
 restoreRuntimeState().catch(() => {});
 updateActionState().catch(() => {});
@@ -36,6 +38,12 @@ chrome.commands?.onCommand?.addListener((command) => {
   });
 });
 
+chrome.action.onClicked.addListener((tab) => {
+  activateFromToolbarClick(tab).catch(async (error) => {
+    await recordActivationFailure(error, tab?.id);
+  });
+});
+
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name !== RETRY_ALARM_NAME) {
     return;
@@ -45,10 +53,17 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 });
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.type === "OFFSCREEN_READY") {
+    offscreenReadyAt = Date.now();
+    sendResponse({ ok: true });
+    return false;
+  }
+
   if (request.type === "START_SILENT_RECORDING_EXTERNAL") {
     startSilentRecording(request.tabId || sender.tab?.id, {
       meetingCode: request.meetingCode,
       meetingLabel: request.meetingLabel,
+      meetingUrl: request.meetingUrl || sender.tab?.url || "",
       participantNames: Array.isArray(request.participantNames) ? request.participantNames : [],
     })
       .then(() => sendResponse({ ok: true }))
@@ -97,14 +112,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.type === "OPEN_CAPTURE_POPUP") {
-    openCapturePopup()
+    openCapturePopup({
+      tabId: request.tabId || sender.tab?.id,
+    })
       .then((result) => sendResponse({ ok: true, ...result }))
       .catch((error) => sendResponse({ ok: false, error: error.message }));
     return true;
   }
 
   if (request.type === "MEETING_LEAVE_TRIGGERED") {
-    stopSilentRecording("You left the meeting. Finalizing audio...")
+    stopSilentRecording("You left the meeting. Finalizing audio...", {
+      meetingCode: request.meetingCode,
+      meetingLabel: request.meetingLabel,
+      meetingUrl: request.meetingUrl || sender.tab?.url || "",
+      participantNames: Array.isArray(request.participantNames) ? request.participantNames : [],
+    })
       .then(() => sendResponse({ ok: true }))
       .catch((error) => sendResponse({ ok: false, error: error.message }));
     return true;
@@ -131,6 +153,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.type === "SESSION_HEARTBEAT") {
     if (currentSession?.tabId === request.tabId) {
       chrome.tabs.sendMessage(request.tabId, { type: "SHOW_AUDIO_HEARTBEAT" }).catch(() => {});
+      refreshActiveMeetingMetadata(request.tabId)
+        .then((metadata) =>
+          sendRuntimeMessage({
+            type: "UPDATE_RECORDING_METADATA",
+            target: "offscreen",
+            tabId: request.tabId,
+            meetingCode: metadata.meetingCode,
+            meetingUrl: metadata.meetingUrl,
+            meetingLabel: metadata.meetingLabel,
+            participantNames: metadata.participantNames,
+          }).catch(() => {})
+        )
+        .catch(() => {});
     }
     sendResponse({ ok: true });
     return false;
@@ -280,7 +315,16 @@ async function startSilentRecording(tabId, metadata = {}) {
   }
 
   const tab = await chrome.tabs.get(tabId);
-  const meetingCode = metadata.meetingCode || getMeetingCode(tab.url || "");
+  const liveMetadata = await getMeetingMetadataForTab(tabId);
+  const meetingCode =
+    metadata.meetingCode || liveMetadata?.meetingCode || getMeetingCode(tab.url || "");
+  const meetingUrl = String(metadata.meetingUrl || tab.url || "").trim();
+  const meetingLabel = String(metadata.meetingLabel || liveMetadata?.meetingLabel || "").trim();
+  const participantNames = mergeParticipantNames(
+    metadata.participantNames,
+    liveMetadata?.participantNames,
+    currentSession?.tabId === tabId ? currentSession?.participantNames : []
+  );
   if (!meetingCode) {
     throw new Error("Join a Google Meet call before activating Momentum.");
   }
@@ -292,7 +336,9 @@ async function startSilentRecording(tabId, metadata = {}) {
   updateSessionState({
     tabId,
     meetingCode,
-    meetingUrl: tab.url || "",
+    meetingUrl,
+    meetingLabel,
+    participantNames,
     phase: "starting",
     status: "Starting secure tab capture...",
     detail: "Momentum is requesting protected audio access for this Google Meet tab.",
@@ -318,9 +364,10 @@ async function startSilentRecording(tabId, metadata = {}) {
       streamId,
       tabId,
       meetingCode,
-      meetingUrl: tab.url || "",
-      meetingLabel: metadata.meetingLabel || "",
-      participantNames: Array.isArray(metadata.participantNames) ? metadata.participantNames : [],
+      meetingUrl,
+      meetingLabel,
+      participantNames,
+      apiBaseUrl: uploadConfig.apiBaseUrl || "",
       extensionVersion: EXTENSION_VERSION,
       connectionToken: uploadConfig.connectionToken || "",
       workspaceId: uploadConfig.workspaceId || "",
@@ -333,6 +380,10 @@ async function startSilentRecording(tabId, metadata = {}) {
     if (response?.started && currentSession?.phase === "starting") {
       updateSessionState({
         tabId,
+        meetingCode,
+        meetingUrl,
+        meetingLabel,
+        participantNames,
         phase: "recording",
         status: "Recording live audio",
         detail: response.started.detail || "Saving secure 5-second recovery chunks on this device.",
@@ -351,7 +402,9 @@ async function startSilentRecording(tabId, metadata = {}) {
     updateSessionState({
       tabId,
       meetingCode,
-      meetingUrl: tab.url || "",
+      meetingUrl,
+      meetingLabel,
+      participantNames,
       phase: "error",
       status,
       detail,
@@ -402,7 +455,8 @@ async function getExtensionRuntimeStatus() {
       stage: "error",
       terminal: true,
       status: "Capture start timed out.",
-      detail: "Chrome never finished the secure tab-capture handshake. Press Activate again from the popup.",
+      detail:
+        "Chrome never finished the secure tab-capture handshake. Click the Momentum toolbar icon again or use the keyboard shortcut.",
       lastError: "Capture start timed out.",
       updatedAt: Date.now(),
     };
@@ -472,34 +526,19 @@ async function refreshPendingSummary(offscreenAlreadyOpen = false) {
   }
 }
 
-async function openCapturePopup() {
-  if (typeof chrome.action?.openPopup === "function") {
-    try {
-      popupEntryContext = {
-        mode: "programmatic",
-        createdAt: Date.now(),
-      };
-      await chrome.action.openPopup();
-      return {
-        opened: true,
-        detail:
-          "Momentum opened the capture panel. If Chrome accepts the gesture, recording will begin automatically from the popup.",
-      };
-    } catch (_) {
-      popupEntryContext = null;
-    }
-  }
-
+async function openCapturePopup(context = {}) {
   return {
     opened: false,
-    detail: `Chrome would not open the capture panel automatically. Click the Momentum toolbar icon or press ${DEFAULT_SHORTCUT_LABEL} while the Google Meet tab is focused.`,
+    detail: `Chrome requires one direct extension click before tab audio capture can begin. Click the Momentum toolbar icon or press ${DEFAULT_SHORTCUT_LABEL} while the Google Meet tab is focused.`,
   };
 }
 
-async function stopSilentRecording(statusMessage) {
+async function stopSilentRecording(statusMessage, metadataPatch = {}) {
   if (!currentSession || currentSession.phase !== "recording") {
     return;
   }
+
+  const freshMetadata = await refreshActiveMeetingMetadata(currentSession.tabId, metadataPatch);
 
   updateSessionState({
     tabId: currentSession.tabId,
@@ -509,6 +548,16 @@ async function stopSilentRecording(statusMessage) {
     stage: "stopping",
     terminal: false,
   });
+
+  sendRuntimeMessage({
+    type: "UPDATE_RECORDING_METADATA",
+    target: "offscreen",
+    tabId: currentSession.tabId,
+    meetingCode: freshMetadata.meetingCode,
+    meetingUrl: freshMetadata.meetingUrl,
+    meetingLabel: freshMetadata.meetingLabel,
+    participantNames: freshMetadata.participantNames,
+  }).catch(() => {});
 
   sendRuntimeMessage({
     type: "STOP_RECORDING",
@@ -547,28 +596,69 @@ async function closeOffscreenDocument() {
   try {
     await chrome.offscreen.closeDocument();
   } catch (_) {}
+  offscreenReadyAt = 0;
 }
 
 function waitForOffscreenReady() {
   return new Promise((resolve, reject) => {
-    const timeoutId = setTimeout(() => {
-      chrome.runtime.onMessage.removeListener(handleMessage);
-      reject(new Error("The audio engine did not become ready in time."));
-    }, OFFSCREEN_READY_TIMEOUT_MS);
+    if (Date.now() - offscreenReadyAt < OFFSCREEN_READY_TIMEOUT_MS) {
+      resolve();
+      return;
+    }
 
-    function handleMessage(message) {
-      if (message?.type !== "OFFSCREEN_READY") {
+    let settled = false;
+    let intervalId = null;
+    const timeoutId = setTimeout(() => {
+      if (settled) {
         return;
       }
 
+      settled = true;
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+      chrome.runtime.onMessage.removeListener(handleReadyMessage);
+      reject(new Error("The audio engine did not become ready in time."));
+    }, OFFSCREEN_READY_TIMEOUT_MS);
+
+    function finishReady() {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      offscreenReadyAt = Date.now();
       clearTimeout(timeoutId);
-      chrome.runtime.onMessage.removeListener(handleMessage);
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+      chrome.runtime.onMessage.removeListener(handleReadyMessage);
       resolve();
     }
 
-    chrome.runtime.onMessage.addListener(handleMessage);
+    function handleReadyMessage(message) {
+      if (message?.type === "OFFSCREEN_READY") {
+        finishReady();
+      }
+    }
 
-    chrome.runtime.sendMessage({ type: "OFFSCREEN_PING" }).catch(() => {});
+    async function pingOffscreen() {
+      try {
+        const response = await sendRuntimeMessage({
+          type: "OFFSCREEN_PING",
+          target: "offscreen",
+        });
+        if (response?.ok) {
+          finishReady();
+        }
+      } catch (_) {}
+    }
+
+    chrome.runtime.onMessage.addListener(handleReadyMessage);
+    pingOffscreen().catch(() => {});
+    intervalId = setInterval(() => {
+      pingOffscreen().catch(() => {});
+    }, OFFSCREEN_PING_INTERVAL_MS);
   });
 }
 
@@ -581,7 +671,11 @@ function getMediaStreamId(tabId) {
       }
 
       settled = true;
-      reject(new Error("Chrome did not grant tab capture in time. Retry from the extension popup."));
+      reject(
+        new Error(
+          "Chrome did not grant tab capture in time. Click the Momentum toolbar icon again or use Alt+Shift+M."
+        )
+      );
     }, CAPTURE_START_TIMEOUT_MS);
 
     chrome.tabCapture.getMediaStreamId({ targetTabId: tabId }, (streamId) => {
@@ -815,7 +909,7 @@ function describeCaptureStartError(error) {
     return {
       status: "Use the extension button to start capture.",
       detail:
-        "Chrome only allows tab audio capture after you click the Momentum toolbar button directly. If this popup came from the in-page prompt, close it, click the extension icon in the top bar, then press Activate.",
+        "Chrome only allows tab audio capture after you click the Momentum toolbar button directly or use Alt+Shift+M while the Meet tab is focused.",
     };
   }
 
@@ -842,6 +936,7 @@ async function getExtensionUploadConfig() {
   const config = stored?.[EXTENSION_UPLOAD_CONFIG_KEY] || {};
 
   return {
+    apiBaseUrl: String(config.apiBaseUrl || ""),
     connectionToken: String(config.connectionToken || ""),
     workspaceId: String(config.workspaceId || ""),
     userId: String(config.userId || ""),
@@ -850,6 +945,7 @@ async function getExtensionUploadConfig() {
 
 async function setExtensionUploadConfig(config) {
   const nextConfig = {
+    apiBaseUrl: String(config.apiBaseUrl || "").trim().replace(/\/+$/, ""),
     connectionToken: String(config.connectionToken || "").trim(),
     workspaceId: String(config.workspaceId || "").trim(),
     userId: String(config.userId || "").trim(),
@@ -902,6 +998,23 @@ async function activateFromCurrentMeetTab(sourceLabel) {
   const metadata = await getMeetingMetadataForTab(tab.id);
   await startSilentRecording(tab.id, {
     meetingCode: metadata?.meetingCode || getMeetingCode(tab.url || ""),
+    meetingUrl: tab.url || "",
+    meetingLabel: metadata?.meetingLabel || "",
+    participantNames: Array.isArray(metadata?.participantNames)
+      ? metadata.participantNames
+      : [],
+  });
+}
+
+async function activateFromToolbarClick(tab) {
+  if (!tab?.id || !String(tab.url || "").includes("meet.google.com")) {
+    throw new Error("Open a live Google Meet tab, then click the Momentum toolbar icon.");
+  }
+
+  const metadata = await getMeetingMetadataForTab(tab.id);
+  await startSilentRecording(tab.id, {
+    meetingCode: metadata?.meetingCode || getMeetingCode(tab.url || ""),
+    meetingUrl: tab.url || "",
     meetingLabel: metadata?.meetingLabel || "",
     participantNames: Array.isArray(metadata?.participantNames)
       ? metadata.participantNames
@@ -917,7 +1030,60 @@ async function getMeetingMetadataForTab(tabId) {
   }
 }
 
-async function recordActivationFailure(error) {
+async function refreshActiveMeetingMetadata(tabId, metadataPatch = {}) {
+  const activeTab = tabId ? await chrome.tabs.get(tabId).catch(() => null) : null;
+  const liveMetadata = tabId ? await getMeetingMetadataForTab(tabId) : {};
+  const merged = {
+    meetingCode: String(
+      metadataPatch.meetingCode ||
+        liveMetadata?.meetingCode ||
+        currentSession?.meetingCode ||
+        getMeetingCode(activeTab?.url || "")
+    ).trim(),
+    meetingUrl: String(
+      metadataPatch.meetingUrl || activeTab?.url || currentSession?.meetingUrl || ""
+    ).trim(),
+    meetingLabel: String(
+      metadataPatch.meetingLabel || liveMetadata?.meetingLabel || currentSession?.meetingLabel || ""
+    ).trim(),
+    participantNames: mergeParticipantNames(
+      metadataPatch.participantNames,
+      liveMetadata?.participantNames,
+      currentSession?.participantNames
+    ),
+  };
+
+  if (currentSession?.tabId === tabId) {
+    updateSessionState({
+      tabId,
+      meetingCode: merged.meetingCode,
+      meetingUrl: merged.meetingUrl,
+      meetingLabel: merged.meetingLabel,
+      participantNames: merged.participantNames,
+    });
+  }
+
+  return merged;
+}
+
+function mergeParticipantNames(...groups) {
+  const names = new Map();
+
+  groups
+    .flat()
+    .map((value) => String(value || "").replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .forEach((name) => {
+      const key = name.toLowerCase();
+      if (!names.has(key)) {
+        names.set(key, name);
+      }
+    });
+
+  return Array.from(names.values()).slice(0, 30);
+}
+
+async function recordActivationFailure(error, tabId = null) {
   lastSession = {
     phase: "error",
     stage: "error",
@@ -931,6 +1097,26 @@ async function recordActivationFailure(error) {
     lastError: error?.message || "Activation failed.",
     updatedAt: Date.now(),
   };
+
+  if (tabId) {
+    chrome.tabs
+      .sendMessage(tabId, {
+        type: "SYNC_SESSION_STATE",
+        session: {
+          tabId,
+          phase: "error",
+          stage: "error",
+          terminal: true,
+          status: "Use the extension button to start capture.",
+          detail:
+            error?.message ||
+            `Chrome needs a direct toolbar click or ${DEFAULT_SHORTCUT_LABEL} on the live Meet tab before capture can begin.`,
+          lastError: error?.message || "Activation failed.",
+          updatedAt: Date.now(),
+        },
+      })
+      .catch(() => {});
+  }
 
   await persistRuntimeState().catch(() => {});
   await updateActionState().catch(() => {});

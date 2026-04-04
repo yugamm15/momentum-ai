@@ -34,7 +34,8 @@
         linear-gradient(180deg, #071120 0%, #08111f 100%);
       font-family: "Manrope", "Segoe UI", system-ui, sans-serif;
       color: var(--text);
-      overflow: hidden;
+      overflow-x: hidden;
+      overflow-y: auto;
     }
 
     .shell {
@@ -300,6 +301,113 @@
       line-height: 1.6;
     }
 
+    .link-config {
+      border-radius: 20px;
+      background: rgba(6, 16, 30, 0.72);
+      border: 1px solid rgba(148, 163, 184, 0.14);
+      padding: 14px;
+    }
+
+    .link-config summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      cursor: pointer;
+      list-style: none;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+
+    .link-config summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .link-config[open] summary {
+      margin-bottom: 12px;
+    }
+
+    .config-summary-copy {
+      color: #d4e4f7;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      text-transform: none;
+    }
+
+    .config-copy {
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.6;
+    }
+
+    .field-grid {
+      display: grid;
+      gap: 10px;
+    }
+
+    .field-block {
+      display: grid;
+      gap: 6px;
+    }
+
+    .field-label {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #b7cae3;
+    }
+
+    .input-shell {
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(148, 163, 184, 0.14);
+      padding: 10px 12px;
+    }
+
+    .input-shell input {
+      width: 100%;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: var(--text);
+      font: inherit;
+      font-size: 12px;
+    }
+
+    .input-shell input::placeholder {
+      color: #6d83a2;
+    }
+
+    .save-btn {
+      margin-top: 10px;
+      padding: 12px 14px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.12);
+      color: #eff6ff;
+      text-transform: none;
+      letter-spacing: 0;
+      font-size: 12px;
+      font-weight: 800;
+      box-shadow: none;
+    }
+
+    .save-btn:hover {
+      box-shadow: none;
+    }
+
+    .config-status {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.6;
+    }
+
     @keyframes drift {
       0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
       50% { transform: translate3d(8px, 12px, 0) scale(1.06); }
@@ -325,7 +433,7 @@
             <div class="title">Meet Capture Console</div>
           </div>
         </div>
-        <div class="badge">v1.6</div>
+        <div class="badge" id="extension-version">v1.8</div>
       </div>
 
       <div class="hero-copy">
@@ -359,6 +467,52 @@
       <div class="footer-tip">
         Momentum records this meeting only after you start it. If Chrome blocks capture, the popup stays open so you can retry without losing context.
       </div>
+
+      <details class="link-config">
+        <summary>
+          <span>Workspace link</span>
+          <span class="config-summary-copy">Optional</span>
+        </summary>
+
+        <p class="config-copy">
+          Save the workspace identifiers here when you want uploads to stay pinned to a specific Momentum workspace during the demo.
+        </p>
+
+        <div class="field-grid">
+          <label class="field-block">
+            <span class="field-label">API base URL</span>
+            <div class="input-shell">
+              <input id="api-base-url" type="text" placeholder="https://your-dashboard.vercel.app" />
+            </div>
+          </label>
+
+          <label class="field-block">
+            <span class="field-label">Workspace ID</span>
+            <div class="input-shell">
+              <input id="workspace-id" type="text" placeholder="workspace UUID" />
+            </div>
+          </label>
+
+          <label class="field-block">
+            <span class="field-label">User ID</span>
+            <div class="input-shell">
+              <input id="user-id" type="text" placeholder="profile UUID" />
+            </div>
+          </label>
+
+          <label class="field-block">
+            <span class="field-label">Connection token</span>
+            <div class="input-shell">
+              <input id="connection-token" type="text" placeholder="momentum-demo-..." />
+            </div>
+          </label>
+        </div>
+
+        <button id="save-config-btn" type="button" class="save-btn">Save workspace link</button>
+        <div id="config-status" class="config-status">
+          Optional: save a workspace link so uploads stay tied to the right Momentum workspace.
+        </div>
+      </details>
     </div>
   </div>
 
