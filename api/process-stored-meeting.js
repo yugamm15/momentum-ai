@@ -5,6 +5,7 @@ import {
 } from './_lib/meeting-processing.js';
 import {
   downloadMeetingAudioFile,
+  extractRawMeetingMetadata,
   inferMeetingCode,
   isRawUploadStatus,
 } from './_lib/meeting-audio.js';
@@ -39,7 +40,7 @@ export async function POST(request) {
     const legacyTables = await getLegacyTableNames(supabase);
     const { data: meeting, error } = await supabase
       .from(legacyTables.meetings)
-      .select('id, title, summary, transcript, audio_url, status')
+      .select('*')
       .eq('id', meetingId)
       .single();
 
@@ -47,15 +48,23 @@ export async function POST(request) {
       return json({ error: error?.message || 'Meeting not found.' }, 404);
     }
 
+    if (workspaceContext?.workspaceId && meeting.workspace_id && meeting.workspace_id !== workspaceContext.workspaceId) {
+      return json({ error: 'Meeting not found.' }, 404);
+    }
+
     if (
       workspaceContext?.workspaceId &&
+      !meeting.workspace_id &&
       String(meeting.summary || '').includes('Workspace id:') &&
       !String(meeting.summary || '').includes(`Workspace id: ${workspaceContext.workspaceId}.`)
     ) {
       return json({ error: 'Meeting not found.' }, 404);
     }
 
-    if (meeting.status === 'completed' && String(meeting.transcript || '').trim()) {
+    if (
+      meeting.status === 'completed' &&
+      (String(meeting.transcript || '').trim() || String(meeting.transcript_text || '').trim())
+    ) {
       return json({
         ok: true,
         meetingId: meeting.id,
@@ -65,12 +74,32 @@ export async function POST(request) {
       });
     }
 
-    if (!isRawUploadStatus(meeting.status) && meeting.status !== 'processing') {
+    const isPendingRawMeeting =
+      isRawUploadStatus(meeting.status) ||
+      meeting.status === 'processing' ||
+      ['uploaded', 'pending-analysis'].includes(String(meeting.processing_status || '').trim());
+
+    if (!isPendingRawMeeting) {
       return json({ error: 'This meeting is not in a reprocessable raw-audio state.' }, 400);
     }
 
-    const file = await downloadMeetingAudioFile(meeting);
-    const meetingCode = inferMeetingCode(meeting);
+    let participantRows = [];
+    try {
+      const { data } = await supabase
+        .from('meeting_participants')
+        .select('display_name')
+        .eq('meeting_id', meetingId);
+      participantRows = data || [];
+    } catch {
+      participantRows = [];
+    }
+
+    const file = await downloadMeetingAudioFile({
+      ...meeting,
+      audio_url: meeting.audio_url || meeting.audio_storage_path || '',
+    });
+    const rawMetadata = extractRawMeetingMetadata(meeting, participantRows || []);
+    const meetingCode = rawMetadata.meetingCode || inferMeetingCode(meeting);
     const result = await processMeetingAudio({
       file,
       meetingCode,
@@ -78,7 +107,8 @@ export async function POST(request) {
       supabase,
       env,
       existingMeetingId: meeting.id,
-      existingAudioUrl: meeting.audio_url,
+      existingAudioUrl: meeting.audio_url || meeting.audio_storage_path,
+      sourceMetadata: rawMetadata,
     });
 
     return json({

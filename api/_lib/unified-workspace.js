@@ -3,6 +3,7 @@ import {
   scoreColor,
   transformLegacyMeeting,
 } from '../../src/lib/meeting-transforms.js';
+import { extractRawMeetingMetadata, isRawUploadStatus } from './meeting-audio.js';
 import { getLegacyTableNames } from './legacy-tables.js';
 import {
   createPersonDirectory,
@@ -10,6 +11,7 @@ import {
   matchDirectoryPerson,
   normalizePersonName,
 } from './people-directory.js';
+import { buildTranscriptSegmentsFromText } from './v2-persistence.js';
 
 let schemaModePromise = null;
 
@@ -326,33 +328,86 @@ async function loadV2Snapshot(supabase, options = {}) {
   const transcriptByMeeting = groupBy(transcriptRows || [], 'meeting_id');
 
   const meetings = (meetingsRows || []).map((meeting) => {
-    const participantRoster = (participantsByMeeting.get(meeting.id) || []).map((item) =>
+    const rawMetadata = extractRawMeetingMetadata(
+      meeting,
+      participantsByMeeting.get(meeting.id) || []
+    );
+    const persistedParticipantRoster = (participantsByMeeting.get(meeting.id) || []).map((item) =>
       buildParticipantRosterEntry(item, directory)
     );
+    const fallbackParticipantRoster =
+      persistedParticipantRoster.length > 0
+        ? []
+        : (rawMetadata.participantNames || []).map((displayName, index) => ({
+            id: `${meeting.id}-participant-fallback-${index + 1}`,
+            displayName,
+            profileId: null,
+            profileName: '',
+            email: '',
+            role: 'guest',
+            matchStatus: 'unmatched',
+            confidence: 0.68,
+          }));
+    const participantRoster = persistedParticipantRoster.length > 0
+      ? persistedParticipantRoster
+      : fallbackParticipantRoster;
     const participantNames = participantRoster.map((item) => item.displayName);
     const rawTranscriptSegments = transcriptByMeeting.get(meeting.id) || [];
-    const transcriptSegments = normalizeTranscriptSegments(rawTranscriptSegments, participantNames);
+    const transcriptSegments = rawTranscriptSegments.length
+      ? normalizeTranscriptSegments(rawTranscriptSegments, participantNames)
+      : buildTranscriptSegmentsFromText(
+          String(meeting.transcript_text || '').trim() || String(meeting.transcript || '').trim()
+        ).map((segment, index) => ({
+          id: `${meeting.id}-seg-${index + 1}`,
+          time: formatTranscriptTime(segment.startedAtSeconds),
+          speaker: '',
+          speakerLabel: 'Speaker attribution unavailable',
+          text: segment.text,
+          attribution: 'unattributed',
+          startedAtSeconds: segment.startedAtSeconds,
+          endedAtSeconds: segment.endedAtSeconds,
+        }));
     const syntheticTranscript = isSyntheticTranscript(rawTranscriptSegments, participantNames);
     const tasks = (tasksByMeeting.get(meeting.id) || []).map((task) =>
       buildWorkspaceTask(task, meeting, directory)
     );
     const overall = Number(meeting.overall_score || 0);
+    const processingStatus =
+      cleanNullable(meeting.processing_status) ||
+      (isRawUploadStatus(meeting.status) ? 'pending-analysis' : 'ready');
+    const audioUrl = cleanNullable(meeting.audio_storage_path || meeting.audio_url);
+    const transcriptText =
+      String(meeting.transcript_text || '').trim() ||
+      String(meeting.transcript || '').trim() ||
+      transcriptSegments.map((segment) => segment.text).join(' ');
+    const summaryParagraph =
+      meeting.summary_paragraph ||
+      extractSummaryParagraph(meeting.summary_markdown) ||
+      String(meeting.summary || '').trim() ||
+      'Momentum processed this meeting using the V2 pipeline.';
 
     return {
       id: meeting.id,
-      aiTitle: meeting.ai_title || meeting.source_meeting_label || 'Meeting Summary',
-      rawTitle: meeting.source_meeting_label || meeting.ai_title || 'Google Meet upload',
+      aiTitle:
+        meeting.ai_title ||
+        meeting.source_meeting_label ||
+        meeting.title ||
+        rawMetadata.meetingLabel ||
+        'Meeting Summary',
+      rawTitle:
+        meeting.source_meeting_label ||
+        meeting.ai_title ||
+        meeting.title ||
+        rawMetadata.meetingLabel ||
+        'Google Meet upload',
       timeLabel: niceTimeFromDate(meeting.created_at),
       createdAt: meeting.created_at,
       source: meeting.source_platform || 'Google Meet',
       participants: participantNames,
       participantRoster,
-      processingStatus: meeting.processing_status || 'ready',
+      processingStatus,
       processingSummary: buildProcessingSummary(meeting),
-      summaryParagraph:
-        meeting.summary_paragraph ||
-        extractSummaryParagraph(meeting.summary_markdown) ||
-        'Momentum processed this meeting using the V2 pipeline.',
+      summaryParagraph,
       summaryBullets: extractSummaryBullets(meeting.summary_markdown),
       decisions: (decisionsByMeeting.get(meeting.id) || []).map((decision) => ({
         id: decision.id,
@@ -373,14 +428,12 @@ async function loadV2Snapshot(supabase, options = {}) {
         message: risk.message,
       })),
       transcript: transcriptSegments,
-      transcriptText:
-        String(meeting.transcript_text || '').trim() ||
-        transcriptSegments.map((segment) => segment.text).join(' '),
+      transcriptText,
       transcriptAttribution: syntheticTranscript ? 'unattributed' : inferTranscriptAttribution(transcriptSegments),
       transcriptNotice: syntheticTranscript
         ? 'Speaker names are not available for this recording yet, so Momentum is showing an unattributed transcript.'
         : '',
-      audioUrl: cleanNullable(meeting.audio_storage_path),
+      audioUrl,
       score: {
         overall,
         clarity: Number(meeting.clarity_score || 0),
@@ -839,6 +892,10 @@ function buildAnalytics(meetings, tasks, people = []) {
 }
 
 function buildProcessingSummary(meeting) {
+  if (isRawUploadStatus(meeting?.status)) {
+    return 'Recording is stored, but transcription and extraction have not completed yet.';
+  }
+
   if (meeting.processing_error) {
     return meeting.processing_error;
   }

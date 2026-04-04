@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import {
   createMeetingContractFromAnalysis,
   persistMeetingContract,
+  supportsV2WorkspaceSchema,
 } from './v2-persistence.js';
 import { getLegacyTableNames } from './legacy-tables.js';
 
@@ -62,35 +63,58 @@ export async function processMeetingAudio({
     sanitizeMeetingCode(normalizedSourceMetadata.meetingCode),
     env.storageBucket
   );
+  const contract = createMeetingContractFromAnalysis({
+    legacyMeetingId: existingMeetingId || null,
+    sourceMetadata: normalizedSourceMetadata,
+    transcriptText: transcript,
+    analysis,
+    audioUrl,
+  });
+  const legacyTables = await getLegacyTableNames(supabase);
+  const unifiedOnlyEnvironment =
+    (await supportsV2WorkspaceSchema(supabase)) && legacyTables.meetings === 'meetings';
 
-  const meeting = await saveMeetingRecord(
-    supabase,
-    {
+  let meeting;
+  if (unifiedOnlyEnvironment) {
+    const persistedMeeting = await persistMeetingContract(supabase, contract);
+    meeting = {
+      id: persistedMeeting?.id || existingMeetingId || '',
       title: analysis.title,
-      summary: analysis.summary_paragraph || analysis.summary,
-      transcript,
-      clarity: analysis.clarity_score,
-      actionability: analysis.execution_score || analysis.actionability_score || analysis.overall_score,
-      audioUrl,
-    },
-    {
-      existingMeetingId,
-      existingAudioUrl,
+    };
+
+    if (!meeting.id) {
+      throw new Error('Momentum could not persist the meeting in the workspace schema.');
     }
-  );
+  } else {
+    const persistedMeeting = await saveMeetingRecord(
+      supabase,
+      {
+        title: analysis.title,
+        summary: analysis.summary_paragraph || analysis.summary,
+        transcript,
+        clarity: analysis.clarity_score,
+        actionability: analysis.execution_score || analysis.actionability_score || analysis.overall_score,
+        audioUrl,
+      },
+      {
+        existingMeetingId,
+        existingAudioUrl,
+      }
+    );
+    meeting = persistedMeeting.meeting;
 
-  await replaceMeetingTasks(supabase, meeting.id, analysis.tasks);
+    if (persistedMeeting.legacyTaskMirrorEnabled) {
+      await replaceMeetingTasks(supabase, meeting.id, analysis.tasks);
+    }
 
-  await persistMeetingContract(
-    supabase,
-    createMeetingContractFromAnalysis({
-      legacyMeetingId: meeting.id,
-      sourceMetadata: normalizedSourceMetadata,
-      transcriptText: transcript,
-      analysis,
-      audioUrl,
-    })
-  ).catch(() => null);
+    await persistMeetingContract(
+      supabase,
+      {
+        ...contract,
+        legacyMeetingId: meeting.id,
+      }
+    ).catch(() => null);
+  }
 
   return {
     meeting,
@@ -354,6 +378,30 @@ async function saveMeetingRecord(supabase, meeting, options = {}) {
         actionability: meeting.actionability,
         audio_url: meeting.audioUrl || existingMeeting.audio_url || options?.existingAudioUrl || null,
         status: 'completed',
+        ...((legacyTables.meetings === 'meetings' && (await supportsV2WorkspaceSchema(supabase)))
+          ? {
+              ai_title: meeting.title,
+              source_meeting_label: meeting.title,
+              summary_paragraph: meeting.summary,
+              summary_markdown: meeting.summary,
+              transcript_text: meeting.transcript,
+              audio_storage_path:
+                meeting.audioUrl || existingMeeting.audio_url || options?.existingAudioUrl || null,
+              transcript_status: 'ready',
+              extraction_status: 'ready',
+              scoring_status: 'ready',
+              processing_status: 'ready',
+              processing_error: null,
+              overall_score: meeting.actionability,
+              clarity_score: meeting.clarity,
+              ownership_score: meeting.actionability,
+              execution_score: meeting.actionability,
+              score_rationale:
+                'Momentum finished transcribing and extracting this previously stored meeting.',
+              analysis_version: 'v2-rich-analysis',
+              updated_at: new Date().toISOString(),
+            }
+          : {}),
       })
       .eq('id', existingMeetingId)
       .select()
@@ -363,7 +411,10 @@ async function saveMeetingRecord(supabase, meeting, options = {}) {
       throw new Error(error?.message || 'Supabase could not update the existing meeting record.');
     }
 
-    return data;
+    return {
+      meeting: data,
+      legacyTaskMirrorEnabled: true,
+    };
   }
 
   const placeholder = await findPlaceholderMeeting(supabase);
@@ -389,7 +440,10 @@ async function saveMeetingRecord(supabase, meeting, options = {}) {
     }
 
     await cleanupBlankProcessingRows(supabase, data.id);
-    return data;
+    return {
+      meeting: data,
+      legacyTaskMirrorEnabled: true,
+    };
   }
 
   const { data, error } = await supabase
@@ -411,7 +465,10 @@ async function saveMeetingRecord(supabase, meeting, options = {}) {
   }
 
   await cleanupBlankProcessingRows(supabase, data.id);
-  return data;
+  return {
+    meeting: data,
+    legacyTaskMirrorEnabled: true,
+  };
 }
 
 async function replaceMeetingTasks(supabase, meetingId, tasks) {

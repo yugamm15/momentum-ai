@@ -380,7 +380,12 @@ export function transformLegacyMeeting(meeting, legacyTasks = []) {
         .filter((task) => shouldKeepLegacyTask(task, meeting))
         .map((task) => normalizeLegacyTask(task, { id: meeting.id, aiTitle, summaryParagraph }, transcriptSegments));
   const participants = summarizeParticipants(
-    rawUploaded ? parseParticipantsFromRawSummary(summaryParagraph) : deriveParticipants(tasks)
+    Array.from(
+      new Set([
+        ...parseParticipantsFromRawSummary(summaryParagraph),
+        ...deriveParticipants(tasks),
+      ])
+    )
   );
   const explicitOwners = tasks.filter((task) => task.owner).length;
   const explicitDeadlines = tasks.filter((task) => task.dueDate).length;

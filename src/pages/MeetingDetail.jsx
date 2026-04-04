@@ -469,6 +469,21 @@ export default function MeetingDetail() {
           </div>
         </div>
 
+        {(meeting.processingSummary || meeting.transcriptNotice) && (
+          <div className="mb-6 space-y-3">
+            {meeting.processingSummary && meeting.processingStatus !== 'ready' && (
+              <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4 text-sm font-medium text-muted-foreground">
+                {meeting.processingSummary}
+              </div>
+            )}
+            {meeting.transcriptNotice && (
+              <div className="rounded-2xl border border-border bg-secondary/50 p-4 text-sm font-medium text-muted-foreground">
+                {meeting.transcriptNotice}
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="space-y-2">
           {filteredTranscript.map((segment) => (
             <div key={segment.id} className="rounded-2xl hover:bg-secondary/50 p-4 transition-colors flex gap-6 group">
@@ -489,7 +504,13 @@ export default function MeetingDetail() {
           {filteredTranscript.length === 0 && (
             <div className="py-16 text-center">
               <FileText className="h-10 w-10 text-muted-foreground/30 mx-auto mb-4" />
-              <div className="text-muted-foreground font-medium text-sm">Nothing matches this search.</div>
+              <div className="text-muted-foreground font-medium text-sm">
+                {meeting.transcriptText
+                  ? 'Nothing matches this search.'
+                  : meeting.processingStatus === 'pending-analysis'
+                    ? 'Transcript is not available yet. Start extraction first.'
+                    : 'No transcript is available for this meeting yet.'}
+              </div>
             </div>
           )}
         </div>

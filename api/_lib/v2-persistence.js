@@ -246,10 +246,25 @@ export async function persistMeetingContract(supabase, contract) {
 }
 
 async function findMeetingByLegacyId(supabase, legacyMeetingId) {
+  const normalizedLegacyId = String(legacyMeetingId || '').trim();
+  if (!normalizedLegacyId) {
+    return null;
+  }
+
+  const { data: directMatch } = await supabase
+    .from('meetings')
+    .select('id')
+    .eq('id', normalizedLegacyId)
+    .maybeSingle();
+
+  if (directMatch?.id) {
+    return directMatch;
+  }
+
   const { data } = await supabase
     .from('meetings')
     .select('id')
-    .eq('legacy_meeting_id', legacyMeetingId)
+    .eq('legacy_meeting_id', normalizedLegacyId)
     .maybeSingle();
 
   return data || null;
