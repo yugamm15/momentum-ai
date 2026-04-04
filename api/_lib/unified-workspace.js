@@ -509,7 +509,14 @@ async function loadLegacyRowsIfAvailable(supabase, legacyTables, v2Meetings, opt
 
       const summaryMetadata = extractRawMeetingMetadata(meeting, []);
       const userId = String(meeting.user_id || summaryMetadata.userId || '').trim();
-      return userId && workspaceProfileIds.has(userId);
+      if (userId && workspaceProfileIds.has(userId)) {
+        return true;
+      }
+
+      const transcript = String(meeting.transcript || meeting.transcript_text || '').trim();
+      const audioUrl = String(meeting.audio_url || meeting.audio_storage_path || '').trim();
+
+      return Boolean(transcript || audioUrl);
     })
     .map((meeting) =>
       transformLegacyMeeting(
