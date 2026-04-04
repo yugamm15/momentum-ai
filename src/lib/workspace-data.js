@@ -31,6 +31,15 @@ const participantNoisePatterns = [
   /\bleave meeting\b/i,
   /\bend call\b/i,
 ];
+const genericMeetingTitles = new Set([
+  'meeting summary',
+  'google meet upload',
+  'untitled execution review',
+  'audio captured',
+  'audio captured for meet session',
+  'info',
+  'infoinfo',
+]);
 
 function buildAnalytics(meetings, tasks, people = []) {
   const readyMeetings = meetings.filter((meeting) => meeting.processingStatus === 'ready');
@@ -350,17 +359,39 @@ function normalizeApiMeeting(meeting) {
           confidence: 0.68,
         }));
 
-  const createdAt =
-    String(meeting?.createdAt || '').trim() ||
-    String(meeting?.created_at || '').trim() ||
-    null;
+  const createdAt = firstValidDateValue(
+    meeting?.recordingStartedAt,
+    meeting?.recording_started_at,
+    meeting?.createdAt,
+    meeting?.created_at
+  );
   const localTimeLabel = formatMeetingTimeLabel(createdAt);
+  const transcriptText = String(meeting?.transcriptText || '').trim();
+  const summaryParagraph = buildDisplaySummaryParagraph({
+    summaryParagraph: meeting?.summaryParagraph,
+    transcriptText,
+    decisions: meeting?.decisions,
+    tasks: meeting?.tasks,
+    participants,
+  });
+  const aiTitle = resolveMeetingTitle({
+    candidates: [meeting?.aiTitle, meeting?.rawTitle],
+    summaryParagraph,
+    transcriptText,
+    decisions: meeting?.decisions,
+    tasks: meeting?.tasks,
+    participants,
+  });
+  const rawTitle = pickFirstUsableLabel(meeting?.rawTitle, meeting?.aiTitle) || aiTitle;
 
   return {
     ...meeting,
     createdAt,
     participants,
     participantRoster,
+    aiTitle,
+    rawTitle,
+    summaryParagraph,
     timeLabel: localTimeLabel || meeting?.timeLabel || 'Recent meeting',
   };
 }
@@ -451,6 +482,183 @@ function normalizeParticipantKey(value) {
     .replace(/[^a-z0-9\s'.-]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function normalizeComparableText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function looksLikeTranscriptMirror(summaryText, transcriptText) {
+  if (!summaryText || !transcriptText) {
+    return false;
+  }
+
+  if (transcriptText.startsWith(summaryText) || summaryText.startsWith(transcriptText.slice(0, Math.min(120, transcriptText.length)))) {
+    return true;
+  }
+
+  const summaryTokens = summaryText.split(' ').filter(Boolean);
+  const transcriptTokens = transcriptText.split(' ').filter(Boolean).slice(0, summaryTokens.length);
+  if (!summaryTokens.length || !transcriptTokens.length) {
+    return false;
+  }
+
+  const positionalMatches = summaryTokens.reduce((count, token, index) => {
+    return count + (token === transcriptTokens[index] ? 1 : 0);
+  }, 0);
+
+  return positionalMatches / summaryTokens.length >= 0.72;
+}
+
+function buildDisplaySummaryParagraph({ summaryParagraph, transcriptText, decisions = [], tasks = [], participants = [] }) {
+  const normalizedSummary = normalizeComparableText(summaryParagraph);
+  const normalizedTranscript = normalizeComparableText(transcriptText);
+
+  if (normalizedSummary && !looksLikeTranscriptMirror(normalizedSummary, normalizedTranscript)) {
+    return String(summaryParagraph || '').trim();
+  }
+
+  const decisionText = (Array.isArray(decisions) ? decisions : [])
+    .map((decision) => String(decision?.text || '').trim())
+    .filter(Boolean)
+    .slice(0, 2);
+  if (decisionText.length > 0) {
+    const lead = decisionText.join(' ');
+    if ((Array.isArray(tasks) ? tasks : []).length > 0) {
+      const taskCount = tasks.length;
+      return `${lead} Momentum identified ${taskCount} follow-up action item${taskCount === 1 ? '' : 's'}.`;
+    }
+
+    return lead;
+  }
+
+  if ((Array.isArray(tasks) ? tasks : []).length > 0) {
+    const taskPreview = tasks
+      .map((task) => String(task?.title || '').trim())
+      .filter(Boolean)
+      .slice(0, 2)
+      .join(', ');
+    return taskPreview
+      ? `The team aligned on execution priorities, including ${taskPreview}. ${tasks.length} action item${tasks.length === 1 ? '' : 's'} were captured.`
+      : `The team aligned on execution priorities and captured ${tasks.length} follow-up action item${tasks.length === 1 ? '' : 's'}.`;
+  }
+
+  if (participants.length > 1) {
+    return `${participants.slice(0, 2).join(' and ')} discussed key updates and next steps during this meeting.`;
+  }
+
+  return 'Momentum captured this meeting and generated a concise executive summary from the available signal.';
+}
+
+function isUsableMeetingTitle(value) {
+  const title = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!title || title.length < 4) {
+    return false;
+  }
+
+  const normalized = title.toLowerCase();
+  if (genericMeetingTitles.has(normalized)) {
+    return false;
+  }
+
+  const compact = normalized.replace(/[^a-z0-9]/g, '');
+  if (!compact) {
+    return false;
+  }
+
+  for (let size = 1; size <= Math.floor(compact.length / 2); size += 1) {
+    if (compact.length % size !== 0) {
+      continue;
+    }
+
+    const chunk = compact.slice(0, size);
+    if (chunk.repeat(compact.length / size) === compact && compact.length >= size * 2) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function toCompactTitle(text) {
+  const cleaned = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!cleaned) {
+    return '';
+  }
+
+  const words = cleaned
+    .replace(/[^a-zA-Z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 7)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
+
+  const candidate = words.join(' ').trim();
+  return isUsableMeetingTitle(candidate) ? candidate : '';
+}
+
+function pickFirstUsableLabel(...values) {
+  for (const value of values) {
+    const normalized = String(value || '').replace(/\s+/g, ' ').trim();
+    if (isUsableMeetingTitle(normalized)) {
+      return normalized;
+    }
+  }
+
+  return '';
+}
+
+function resolveMeetingTitle({ candidates = [], summaryParagraph, transcriptText, decisions = [], tasks = [], participants = [] }) {
+  const existingTitle = pickFirstUsableLabel(...candidates);
+  if (existingTitle) {
+    return existingTitle;
+  }
+
+  const decisionTitle = toCompactTitle((Array.isArray(decisions) ? decisions : []).map((decision) => decision?.text).find(Boolean));
+  if (decisionTitle) {
+    return decisionTitle;
+  }
+
+  const taskTitle = toCompactTitle((Array.isArray(tasks) ? tasks : []).map((task) => task?.title).find(Boolean));
+  if (taskTitle) {
+    return taskTitle;
+  }
+
+  const summaryTitle = toCompactTitle(summaryParagraph);
+  if (summaryTitle) {
+    return summaryTitle;
+  }
+
+  const transcriptTitle = toCompactTitle(transcriptText);
+  if (transcriptTitle) {
+    return transcriptTitle;
+  }
+
+  if (participants.length > 0) {
+    return `Discussion with ${participants[0]}`;
+  }
+
+  return 'Meeting Summary';
+}
+
+function firstValidDateValue(...values) {
+  for (const value of values) {
+    const text = String(value || '').trim();
+    if (!text) {
+      continue;
+    }
+
+    const parsed = new Date(text);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString();
+    }
+  }
+
+  return null;
 }
 
 function formatMeetingTimeLabel(value) {

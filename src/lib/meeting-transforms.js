@@ -81,6 +81,15 @@ const statusMap = {
   done: 'done',
   completed: 'done',
 };
+const genericMeetingTitles = new Set([
+  'meeting summary',
+  'google meet upload',
+  'untitled execution review',
+  'audio captured',
+  'audio captured for meet session',
+  'info',
+  'infoinfo',
+]);
 
 export function scoreColor(score) {
   if (score >= 80) {
@@ -472,6 +481,157 @@ function parseParticipantsFromRawSummary(summary) {
     .filter(Boolean);
 }
 
+function normalizeComparableText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function looksLikeTranscriptMirror(summaryText, transcriptText) {
+  if (!summaryText || !transcriptText) {
+    return false;
+  }
+
+  if (transcriptText.startsWith(summaryText) || summaryText.startsWith(transcriptText.slice(0, Math.min(120, transcriptText.length)))) {
+    return true;
+  }
+
+  const summaryTokens = summaryText.split(' ').filter(Boolean);
+  const transcriptTokens = transcriptText.split(' ').filter(Boolean).slice(0, summaryTokens.length);
+  if (!summaryTokens.length || !transcriptTokens.length) {
+    return false;
+  }
+
+  const positionalMatches = summaryTokens.reduce((count, token, index) => {
+    return count + (token === transcriptTokens[index] ? 1 : 0);
+  }, 0);
+
+  return positionalMatches / summaryTokens.length >= 0.72;
+}
+
+function isUsableMeetingTitle(value) {
+  const title = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!title || title.length < 4) {
+    return false;
+  }
+
+  const normalized = title.toLowerCase();
+  if (genericMeetingTitles.has(normalized)) {
+    return false;
+  }
+
+  const compact = normalized.replace(/[^a-z0-9]/g, '');
+  if (!compact) {
+    return false;
+  }
+
+  for (let size = 1; size <= Math.floor(compact.length / 2); size += 1) {
+    if (compact.length % size !== 0) {
+      continue;
+    }
+
+    const chunk = compact.slice(0, size);
+    if (chunk.repeat(compact.length / size) === compact && compact.length >= size * 2) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function toCompactTitle(text) {
+  const cleaned = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!cleaned) {
+    return '';
+  }
+
+  const words = cleaned
+    .replace(/[^a-zA-Z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 7)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
+
+  const candidate = words.join(' ').trim();
+  return isUsableMeetingTitle(candidate) ? candidate : '';
+}
+
+function pickFirstUsableLabel(...values) {
+  for (const value of values) {
+    const normalized = String(value || '').replace(/\s+/g, ' ').trim();
+    if (isUsableMeetingTitle(normalized)) {
+      return normalized;
+    }
+  }
+
+  return '';
+}
+
+function resolveLegacyMeetingTitle({ candidates = [], transcriptText, summaryParagraph, tasks = [] }) {
+  const existing = pickFirstUsableLabel(...candidates);
+  if (existing) {
+    return existing;
+  }
+
+  const taskTitle = toCompactTitle(tasks.map((task) => task.title).find(Boolean));
+  if (taskTitle) {
+    return taskTitle;
+  }
+
+  const summaryTitle = toCompactTitle(summaryParagraph);
+  if (summaryTitle) {
+    return summaryTitle;
+  }
+
+  const transcriptTitle = toCompactTitle(transcriptText);
+  if (transcriptTitle) {
+    return transcriptTitle;
+  }
+
+  return 'Meeting Summary';
+}
+
+function buildDisplaySummaryParagraph({ summaryParagraph, transcriptText, tasks = [] }) {
+  const normalizedSummary = normalizeComparableText(summaryParagraph);
+  const normalizedTranscript = normalizeComparableText(transcriptText);
+
+  if (normalizedSummary && !looksLikeTranscriptMirror(normalizedSummary, normalizedTranscript)) {
+    return summaryParagraph;
+  }
+
+  if (tasks.length > 0) {
+    const taskPreview = tasks
+      .map((task) => String(task.title || '').trim())
+      .filter(Boolean)
+      .slice(0, 2)
+      .join(', ');
+
+    return taskPreview
+      ? `The team aligned on execution priorities, including ${taskPreview}. ${tasks.length} follow-up action item${tasks.length === 1 ? '' : 's'} were captured.`
+      : `The team aligned on execution priorities and captured ${tasks.length} follow-up action item${tasks.length === 1 ? '' : 's'}.`;
+  }
+
+  return 'Momentum captured this meeting and generated a concise executive summary from the available signal.';
+}
+
+function firstValidDateValue(...values) {
+  for (const value of values) {
+    const text = String(value || '').trim();
+    if (!text) {
+      continue;
+    }
+
+    const parsed = new Date(text);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString();
+    }
+  }
+
+  return null;
+}
+
 export function transformLegacyMeeting(meeting, legacyTasks = []) {
   if (!shouldKeepLegacyMeeting(meeting, legacyTasks)) {
     return null;
@@ -483,27 +643,42 @@ export function transformLegacyMeeting(meeting, legacyTasks = []) {
   const rawUploaded = isRawUploadedMeeting(meeting);
   const transcriptText = String(meeting.transcript || '').trim();
   const transcriptSegments = transcriptSegmentsFromText(transcriptText);
-  const aiTitle =
+  const rawSummaryParagraph =
+    String(summaryText || '').trim() ||
+    'Momentum stored the transcript, but the meeting summary still needs a quick review.';
+  const provisionalTitle =
     String(metadata.meetingLabel || '').trim() ||
     String(meeting.title || '').trim() ||
     'Untitled execution review';
-  const summaryParagraph =
-    String(summaryText || '').trim() ||
-    'Momentum stored the transcript, but the meeting summary still needs a quick review.';
   const tasks = rawUploaded
     ? []
     : legacyTasks
         .filter((task) => shouldKeepLegacyTask(task, meeting))
-        .map((task) => normalizeLegacyTask(task, { id: meeting.id, aiTitle, summaryParagraph }, transcriptSegments));
+        .map((task) => normalizeLegacyTask(task, {
+          id: meeting.id,
+          aiTitle: provisionalTitle,
+          summaryParagraph: rawSummaryParagraph,
+        }, transcriptSegments));
   const participants = summarizeParticipants(
     Array.from(
       new Set([
         ...((Array.isArray(metadata.participantNames) ? metadata.participantNames : [])),
-        ...parseParticipantsFromRawSummary(summaryParagraph),
+        ...parseParticipantsFromRawSummary(rawSummaryParagraph),
         ...deriveParticipants(tasks),
       ])
     )
   );
+  const aiTitle = resolveLegacyMeetingTitle({
+    candidates: [metadata.meetingLabel, meeting.title],
+    transcriptText,
+    summaryParagraph: rawSummaryParagraph,
+    tasks,
+  });
+  const summaryParagraph = buildDisplaySummaryParagraph({
+    summaryParagraph: rawSummaryParagraph,
+    transcriptText,
+    tasks,
+  });
   const scores = deriveLegacyScores({
     meeting,
     tasks,
@@ -512,11 +687,11 @@ export function transformLegacyMeeting(meeting, legacyTasks = []) {
   });
   const decisions = rawUploaded
     ? []
-    : buildSummaryBullets(summaryParagraph, tasks).slice(0, 3).map((bullet, index) => ({
+    : buildSummaryBullets(rawSummaryParagraph, tasks).slice(0, 3).map((bullet, index) => ({
         id: `${meeting.id}-decision-${index + 1}`,
         text: bullet,
         confidence: 0.68,
-        sourceSnippet: transcriptSegments[index]?.text || summaryParagraph,
+      sourceSnippet: transcriptSegments[index]?.text || rawSummaryParagraph,
       }));
   const checklist = rawUploaded
     ? []
@@ -545,12 +720,10 @@ export function transformLegacyMeeting(meeting, legacyTasks = []) {
   return {
     id: meeting.id,
     aiTitle,
-    rawTitle:
-      String(metadata.meetingLabel || '').trim() ||
-      String(meeting.title || '').trim() ||
-      'Google Meet upload',
-    timeLabel: niceTimeFromDate(meeting.created_at),
-    createdAt: meeting.created_at,
+    rawTitle: pickFirstUsableLabel(metadata.meetingLabel, meeting.title) || aiTitle,
+    timeLabel: niceTimeFromDate(firstValidDateValue(metadata.recordingStartedAt, meeting.created_at)),
+    createdAt: firstValidDateValue(metadata.recordingStartedAt, meeting.created_at),
+    recordingStartedAt: firstValidDateValue(metadata.recordingStartedAt),
     source: String(metadata.sourcePlatform || '').trim() || 'Google Meet',
     participants,
     participantRoster: participants.map((participant, index) => ({

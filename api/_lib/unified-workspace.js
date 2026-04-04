@@ -381,6 +381,12 @@ async function loadV2Snapshot(supabase, options = {}) {
     const tasks = (tasksByMeeting.get(meeting.id) || []).map((task) =>
       buildWorkspaceTask(task, meeting, directory)
     );
+    const decisions = (decisionsByMeeting.get(meeting.id) || []).map((decision) => ({
+      id: decision.id,
+      text: decision.text,
+      confidence: Number(decision.confidence || 0.7),
+      sourceSnippet: decision.source_snippet || '',
+    }));
     const overall = Number(meeting.overall_score || 0);
     const processingStatus =
       cleanNullable(meeting.processing_status) ||
@@ -390,28 +396,51 @@ async function loadV2Snapshot(supabase, options = {}) {
       String(meeting.transcript_text || '').trim() ||
       String(meeting.transcript || '').trim() ||
       transcriptSegments.map((segment) => segment.text).join(' ');
-    const summaryParagraph =
+    const rawSummaryParagraph =
       meeting.summary_paragraph ||
       extractSummaryParagraph(meeting.summary_markdown) ||
       String(meeting.summary || '').trim() ||
       'Momentum processed this meeting using the V2 pipeline.';
+    const summaryParagraph = buildDisplaySummaryParagraph({
+      summaryParagraph: rawSummaryParagraph,
+      transcriptText,
+      decisions,
+      tasks,
+      participants: participantNames,
+    });
+    const effectiveTimestamp = firstValidDateValue(
+      meeting.recording_started_at,
+      meeting.recording_stopped_at,
+      meeting.created_at
+    );
+    const aiTitle = resolveMeetingTitle({
+      candidates: [
+        meeting.ai_title,
+        meeting.source_meeting_label,
+        meeting.title,
+        rawMetadata.meetingLabel,
+      ],
+      summaryParagraph,
+      transcriptText,
+      decisions,
+      tasks,
+      participants: participantNames,
+    });
+    const rawTitle =
+      pickFirstUsableLabel(
+        meeting.source_meeting_label,
+        rawMetadata.meetingLabel,
+        meeting.title,
+        meeting.ai_title
+      ) || aiTitle;
 
     return {
       id: meeting.id,
-      aiTitle:
-        meeting.ai_title ||
-        meeting.source_meeting_label ||
-        meeting.title ||
-        rawMetadata.meetingLabel ||
-        'Meeting Summary',
-      rawTitle:
-        meeting.source_meeting_label ||
-        meeting.ai_title ||
-        meeting.title ||
-        rawMetadata.meetingLabel ||
-        'Google Meet upload',
-      timeLabel: niceTimeFromDate(meeting.created_at),
-      createdAt: meeting.created_at,
+      aiTitle,
+      rawTitle,
+      timeLabel: niceTimeFromDate(effectiveTimestamp),
+      createdAt: effectiveTimestamp,
+      recordingStartedAt: cleanNullable(meeting.recording_started_at),
       source: meeting.source_platform || 'Google Meet',
       participants: participantNames,
       participantRoster,
@@ -419,12 +448,7 @@ async function loadV2Snapshot(supabase, options = {}) {
       processingSummary: buildProcessingSummary(meeting),
       summaryParagraph,
       summaryBullets: extractSummaryBullets(meeting.summary_markdown),
-      decisions: (decisionsByMeeting.get(meeting.id) || []).map((decision) => ({
-        id: decision.id,
-        text: decision.text,
-        confidence: Number(decision.confidence || 0.7),
-        sourceSnippet: decision.source_snippet || '',
-      })),
+      decisions,
       tasks,
       checklist: (checklistByMeeting.get(meeting.id) || []).map((item) => ({
         id: item.id,
@@ -986,6 +1010,191 @@ function niceTimeFromDate(value) {
     hour: 'numeric',
     minute: '2-digit',
   }).format(date);
+}
+
+function firstValidDateValue(...values) {
+  for (const value of values) {
+    const text = String(value || '').trim();
+    if (!text) {
+      continue;
+    }
+
+    const parsed = new Date(text);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString();
+    }
+  }
+
+  return null;
+}
+
+function buildDisplaySummaryParagraph({ summaryParagraph, transcriptText, decisions = [], tasks = [], participants = [] }) {
+  const normalizedSummary = normalizeComparableText(summaryParagraph);
+  const normalizedTranscript = normalizeComparableText(transcriptText);
+
+  if (normalizedSummary && !looksLikeTranscriptMirror(normalizedSummary, normalizedTranscript)) {
+    return summaryParagraph;
+  }
+
+  const decisionText = decisions
+    .map((decision) => String(decision.text || '').trim())
+    .filter(Boolean)
+    .slice(0, 2);
+  if (decisionText.length > 0) {
+    const lead = decisionText.join(' ');
+    if (tasks.length > 0) {
+      return `${lead} Momentum identified ${tasks.length} follow-up action item${tasks.length === 1 ? '' : 's'}.`;
+    }
+
+    return lead;
+  }
+
+  if (tasks.length > 0) {
+    const taskPreview = tasks
+      .map((task) => String(task.title || '').trim())
+      .filter(Boolean)
+      .slice(0, 2)
+      .join(', ');
+    return taskPreview
+      ? `The team aligned on execution priorities, including ${taskPreview}. ${tasks.length} action item${tasks.length === 1 ? '' : 's'} were captured.`
+      : `The team aligned on execution priorities and captured ${tasks.length} follow-up action item${tasks.length === 1 ? '' : 's'}.`;
+  }
+
+  if (participants.length > 1) {
+    return `${participants.slice(0, 2).join(' and ')} discussed key updates and next steps during this meeting.`;
+  }
+
+  return 'Momentum captured this meeting and generated a concise executive summary from the available signal.';
+}
+
+function looksLikeTranscriptMirror(summaryText, transcriptText) {
+  if (!summaryText || !transcriptText) {
+    return false;
+  }
+
+  if (transcriptText.startsWith(summaryText) || summaryText.startsWith(transcriptText.slice(0, Math.min(120, transcriptText.length)))) {
+    return true;
+  }
+
+  const summaryTokens = summaryText.split(' ').filter(Boolean);
+  const transcriptTokens = transcriptText.split(' ').filter(Boolean).slice(0, summaryTokens.length);
+  if (!summaryTokens.length || !transcriptTokens.length) {
+    return false;
+  }
+
+  const positionalMatches = summaryTokens.reduce((count, token, index) => {
+    return count + (token === transcriptTokens[index] ? 1 : 0);
+  }, 0);
+
+  return positionalMatches / summaryTokens.length >= 0.72;
+}
+
+function normalizeComparableText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function resolveMeetingTitle({ candidates = [], summaryParagraph, transcriptText, decisions = [], tasks = [], participants = [] }) {
+  const existingTitle = pickFirstUsableLabel(...candidates);
+  if (existingTitle) {
+    return existingTitle;
+  }
+
+  const decisionTitle = toCompactTitle(decisions.map((decision) => decision.text).find(Boolean));
+  if (decisionTitle) {
+    return decisionTitle;
+  }
+
+  const taskTitle = toCompactTitle(tasks.map((task) => task.title).find(Boolean));
+  if (taskTitle) {
+    return taskTitle;
+  }
+
+  const summaryTitle = toCompactTitle(summaryParagraph);
+  if (summaryTitle) {
+    return summaryTitle;
+  }
+
+  const transcriptTitle = toCompactTitle(transcriptText);
+  if (transcriptTitle) {
+    return transcriptTitle;
+  }
+
+  if (participants.length > 0) {
+    return `Discussion with ${participants[0]}`;
+  }
+
+  return 'Meeting Summary';
+}
+
+function pickFirstUsableLabel(...values) {
+  for (const value of values) {
+    const normalized = String(value || '').replace(/\s+/g, ' ').trim();
+    if (isUsableMeetingTitle(normalized)) {
+      return normalized;
+    }
+  }
+
+  return '';
+}
+
+function isUsableMeetingTitle(value) {
+  const title = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!title || title.length < 4) {
+    return false;
+  }
+
+  const normalized = title.toLowerCase();
+  const genericTitles = new Set([
+    'meeting summary',
+    'google meet upload',
+    'untitled execution review',
+    'audio captured',
+    'audio captured for meet session',
+    'info',
+    'infoinfo',
+  ]);
+  if (genericTitles.has(normalized)) {
+    return false;
+  }
+
+  const compact = normalized.replace(/[^a-z0-9]/g, '');
+  if (!compact) {
+    return false;
+  }
+
+  for (let size = 1; size <= Math.floor(compact.length / 2); size += 1) {
+    if (compact.length % size !== 0) {
+      continue;
+    }
+
+    const chunk = compact.slice(0, size);
+    if (chunk.repeat(compact.length / size) === compact && compact.length >= size * 2) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function toCompactTitle(text) {
+  const cleaned = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!cleaned) {
+    return '';
+  }
+
+  const words = cleaned
+    .replace(/[^a-zA-Z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 7)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
+
+  const candidate = words.join(' ').trim();
+  return isUsableMeetingTitle(candidate) ? candidate : '';
 }
 
 function groupBy(items, key) {
