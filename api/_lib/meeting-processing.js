@@ -12,6 +12,96 @@ import { dedupeParticipantDisplayNames } from './people-directory.js';
 const STORAGE_BUCKET = process.env.STORAGE_BUCKET || 'meetings';
 const MAX_EMBEDDED_AUDIO_BYTES = 6 * 1024 * 1024;
 const LEGACY_METADATA_MARKER = '[MOMENTUM_META]';
+const transcriptSummaryStopWords = new Set([
+  'the',
+  'and',
+  'that',
+  'this',
+  'with',
+  'from',
+  'have',
+  'were',
+  'been',
+  'they',
+  'them',
+  'their',
+  'then',
+  'when',
+  'what',
+  'where',
+  'which',
+  'would',
+  'could',
+  'should',
+  'about',
+  'into',
+  'just',
+  'your',
+  'ours',
+  'ourselves',
+  'our',
+  'also',
+  'after',
+  'before',
+  'because',
+  'while',
+  'there',
+  'here',
+  'each',
+  'only',
+  'more',
+  'most',
+  'very',
+  'than',
+  'will',
+  'shall',
+  'might',
+  'must',
+  'need',
+  'needed',
+  'needs',
+  'some',
+  'any',
+  'everyone',
+  'someone',
+  'somebody',
+  'anyone',
+  'anything',
+  'meeting',
+  'meetings',
+  'google',
+  'audio',
+  'transcript',
+  'momentum',
+]);
+const transcriptSummaryNoiseWords = new Set([
+  'yeah',
+  'yep',
+  'okay',
+  'ok',
+  'hello',
+  'hi',
+  'thanks',
+  'thank',
+  'please',
+  'right',
+  'alright',
+  'cool',
+  'sure',
+  'hmm',
+  'um',
+  'uh',
+  'like',
+  'really',
+  'actually',
+  'basically',
+  'literally',
+  'gonna',
+  'wanna',
+  'call',
+  'session',
+  'discussion',
+]);
 
 export function getEnv(options = {}) {
   const requireGroq = options.requireGroq !== false;
@@ -811,6 +901,7 @@ function buildFallbackSummary(summarySentences, taskCount, transcriptLooksLowSig
     ? `${participantNames[0]} and ${participantNames[1]}`
     : participantNames[0] || '';
   const meetingCode = sanitizeMeetingCode(sourceMetadata?.meetingCode);
+  const meetingLabel = sanitizeOptionalField(sourceMetadata?.meetingLabel);
 
   if (transcriptLooksLowSignal) {
     const narrative = inferLowSignalNarrative(transcript);
@@ -833,11 +924,17 @@ function buildFallbackSummary(summarySentences, taskCount, transcriptLooksLowSig
     return 'Audio was captured for this meeting, but speech signal was too limited for a detailed summary.';
   }
 
-  const summary = summarySentences.join(' ').trim();
-  if (summary) {
+  const abstractSummary = buildContextualFallbackSummary({
+    transcript,
+    summarySentences,
+    participantLead,
+    meetingCode,
+    meetingLabel,
+  });
+  if (abstractSummary) {
     return taskCount > 0
-      ? `${summary} Momentum also identified ${taskCount} follow-up item${taskCount === 1 ? '' : 's'}.`
-      : summary;
+      ? `${abstractSummary} Momentum also identified ${taskCount} follow-up item${taskCount === 1 ? '' : 's'}.`
+      : abstractSummary;
   }
 
   if (participantLead) {
@@ -884,6 +981,101 @@ function inferLowSignalNarrative(transcriptText) {
     summary:
       'The transcript is extremely brief and mostly non-substantive, so clear discussion topics, decisions, or action items could not be confidently extracted.',
   };
+}
+
+function buildContextualFallbackSummary({
+  transcript = '',
+  summarySentences = [],
+  participantLead = '',
+  meetingCode = '',
+  meetingLabel = '',
+}) {
+  const topics = extractSummaryTopics(transcript, 3);
+  if (topics.length < 2) {
+    const supplemental = extractSummaryTopics(summarySentences.join(' '), 3);
+    for (const topic of supplemental) {
+      if (!topics.includes(topic)) {
+        topics.push(topic);
+      }
+
+      if (topics.length >= 3) {
+        break;
+      }
+    }
+  }
+
+  const lead = participantLead || 'The team';
+  if (topics.length >= 2) {
+    return `${lead} discussed ${joinTopicList(topics.slice(0, 3))} and aligned on immediate next steps.`;
+  }
+
+  if (topics.length === 1) {
+    return `${lead} focused on ${topics[0]} and aligned on follow-up coordination.`;
+  }
+
+  const reference = String(meetingLabel || meetingCode || '').trim();
+  if (reference) {
+    return `The team reviewed updates around ${reference} and aligned on next steps.`;
+  }
+
+  return 'The team exchanged updates and aligned on next steps during this meeting.';
+}
+
+function extractSummaryTopics(text, maxTopics = 3) {
+  const counts = new Map();
+  const words = String(text || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter(Boolean);
+
+  words.forEach((rawWord) => {
+    const word = rawWord.replace(/^-+|-+$/g, '');
+    if (!word || word.length < 4 || /^\d+$/.test(word)) {
+      return;
+    }
+
+    if (transcriptSummaryStopWords.has(word) || transcriptSummaryNoiseWords.has(word)) {
+      return;
+    }
+
+    counts.set(word, (counts.get(word) || 0) + 1);
+  });
+
+  const ranked = Array.from(counts.entries())
+    .sort((left, right) => {
+      if (right[1] !== left[1]) {
+        return right[1] - left[1];
+      }
+
+      if (right[0].length !== left[0].length) {
+        return right[0].length - left[0].length;
+      }
+
+      return left[0].localeCompare(right[0]);
+    });
+
+  const strong = ranked.filter(([, count]) => count >= 2);
+  const source = strong.length > 0 ? strong : ranked;
+  return source.slice(0, maxTopics).map(([topic]) => topic);
+}
+
+function joinTopicList(topics = []) {
+  if (topics.length === 0) {
+    return '';
+  }
+
+  if (topics.length === 1) {
+    return topics[0];
+  }
+
+  if (topics.length === 2) {
+    return `${topics[0]} and ${topics[1]}`;
+  }
+
+  return `${topics[0]}, ${topics[1]}, and ${topics[2]}`;
 }
 
 function buildFallbackDecisions(summarySentences) {

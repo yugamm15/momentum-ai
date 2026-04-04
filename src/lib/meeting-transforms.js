@@ -90,6 +90,96 @@ const genericMeetingTitles = new Set([
   'info',
   'infoinfo',
 ]);
+const transcriptSummaryStopWords = new Set([
+  'the',
+  'and',
+  'that',
+  'this',
+  'with',
+  'from',
+  'have',
+  'were',
+  'been',
+  'they',
+  'them',
+  'their',
+  'then',
+  'when',
+  'what',
+  'where',
+  'which',
+  'would',
+  'could',
+  'should',
+  'about',
+  'into',
+  'just',
+  'your',
+  'ours',
+  'ourselves',
+  'our',
+  'also',
+  'after',
+  'before',
+  'because',
+  'while',
+  'there',
+  'here',
+  'each',
+  'only',
+  'more',
+  'most',
+  'very',
+  'than',
+  'will',
+  'shall',
+  'might',
+  'must',
+  'need',
+  'needed',
+  'needs',
+  'some',
+  'any',
+  'everyone',
+  'someone',
+  'somebody',
+  'anyone',
+  'anything',
+  'meeting',
+  'meetings',
+  'google',
+  'audio',
+  'transcript',
+  'momentum',
+]);
+const transcriptSummaryNoiseWords = new Set([
+  'yeah',
+  'yep',
+  'okay',
+  'ok',
+  'hello',
+  'hi',
+  'thanks',
+  'thank',
+  'please',
+  'right',
+  'alright',
+  'cool',
+  'sure',
+  'hmm',
+  'um',
+  'uh',
+  'like',
+  'really',
+  'actually',
+  'basically',
+  'literally',
+  'gonna',
+  'wanna',
+  'call',
+  'session',
+  'discussion',
+]);
 
 export function scoreColor(score) {
   if (score >= 80) {
@@ -508,7 +598,21 @@ function looksLikeTranscriptMirror(summaryText, transcriptText) {
     return count + (token === transcriptTokens[index] ? 1 : 0);
   }, 0);
 
-  return positionalMatches / summaryTokens.length >= 0.72;
+  if (positionalMatches / summaryTokens.length >= 0.72) {
+    return true;
+  }
+
+  const transcriptTokenSet = new Set(transcriptText.split(' ').filter(Boolean));
+  const summaryTokenSet = new Set(summaryTokens);
+  const overlap = Array.from(summaryTokenSet).reduce((count, token) => {
+    return count + (transcriptTokenSet.has(token) ? 1 : 0);
+  }, 0) / summaryTokenSet.size;
+
+  if (summaryTokens.length >= 18 && overlap >= 0.84) {
+    return true;
+  }
+
+  return false;
 }
 
 function isUsableMeetingTitle(value) {
@@ -615,9 +719,17 @@ function resolveLegacyMeetingTitle({ candidates = [], transcriptText, summaryPar
   return 'Meeting Summary';
 }
 
-function buildDisplaySummaryParagraph({ summaryParagraph, transcriptText, tasks = [], meetingCode = '' }) {
+function buildDisplaySummaryParagraph({
+  summaryParagraph,
+  transcriptText,
+  tasks = [],
+  meetingCode = '',
+  participants = [],
+  meetingLabel = '',
+}) {
   const normalizedSummary = normalizeComparableText(summaryParagraph);
   const normalizedTranscript = normalizeComparableText(transcriptText);
+  const summaryWordCount = normalizedSummary.split(' ').filter(Boolean).length;
   const lowSignal = isLowSignalContext({
     normalizedSummary,
     transcriptText,
@@ -628,6 +740,7 @@ function buildDisplaySummaryParagraph({ summaryParagraph, transcriptText, tasks 
     normalizedSummary
     && !looksLikeTranscriptMirror(normalizedSummary, normalizedTranscript)
     && !isBoilerplateSummary(normalizedSummary)
+    && summaryWordCount <= 52
     && !lowSignal
   ) {
     return summaryParagraph;
@@ -652,7 +765,96 @@ function buildDisplaySummaryParagraph({ summaryParagraph, transcriptText, tasks 
       : 'Audio was captured for this meeting, but speech signal was too limited for a detailed summary.';
   }
 
-  return 'Momentum captured this meeting and generated a concise executive summary from the available signal.';
+  return buildContextualTranscriptSummary({
+    transcriptText,
+    participants,
+    meetingCode,
+    meetingLabel,
+  });
+}
+
+function buildContextualTranscriptSummary({
+  transcriptText = '',
+  participants = [],
+  meetingCode = '',
+  meetingLabel = '',
+}) {
+  const topics = extractSummaryTopics(transcriptText, 3);
+  const lead = participants.length > 1
+    ? `${participants[0]} and ${participants[1]}`
+    : participants[0] || 'The team';
+
+  if (topics.length >= 2) {
+    return `${lead} discussed ${joinTopicList(topics.slice(0, 3))} and aligned on immediate next steps.`;
+  }
+
+  if (topics.length === 1) {
+    return `${lead} focused on ${topics[0]} and aligned on follow-up coordination.`;
+  }
+
+  const reference = String(meetingLabel || meetingCode || '').trim();
+  if (reference) {
+    return `The team reviewed updates around ${reference} and aligned on next steps.`;
+  }
+
+  return `${lead} exchanged updates and aligned on next steps during this meeting.`;
+}
+
+function extractSummaryTopics(text, maxTopics = 3) {
+  const counts = new Map();
+  const words = String(text || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter(Boolean);
+
+  words.forEach((rawWord) => {
+    const word = rawWord.replace(/^-+|-+$/g, '');
+    if (!word || word.length < 4 || /^\d+$/.test(word)) {
+      return;
+    }
+
+    if (transcriptSummaryStopWords.has(word) || transcriptSummaryNoiseWords.has(word)) {
+      return;
+    }
+
+    counts.set(word, (counts.get(word) || 0) + 1);
+  });
+
+  const ranked = Array.from(counts.entries())
+    .sort((left, right) => {
+      if (right[1] !== left[1]) {
+        return right[1] - left[1];
+      }
+
+      if (right[0].length !== left[0].length) {
+        return right[0].length - left[0].length;
+      }
+
+      return left[0].localeCompare(right[0]);
+    });
+
+  const strong = ranked.filter(([, count]) => count >= 2);
+  const source = strong.length > 0 ? strong : ranked;
+  return source.slice(0, maxTopics).map(([topic]) => topic);
+}
+
+function joinTopicList(topics = []) {
+  if (topics.length === 0) {
+    return '';
+  }
+
+  if (topics.length === 1) {
+    return topics[0];
+  }
+
+  if (topics.length === 2) {
+    return `${topics[0]} and ${topics[1]}`;
+  }
+
+  return `${topics[0]}, ${topics[1]}, and ${topics[2]}`;
 }
 
 function isBoilerplateSummary(normalizedSummary) {
@@ -769,6 +971,8 @@ export function transformLegacyMeeting(meeting, legacyTasks = []) {
     transcriptText,
     tasks,
     meetingCode: metadata.meetingCode,
+    participants,
+    meetingLabel: metadata.meetingLabel,
   });
   const scores = deriveLegacyScores({
     meeting,
