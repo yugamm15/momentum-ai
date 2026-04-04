@@ -1,37 +1,38 @@
 import { useDeferredValue, useMemo, useState } from 'react';
 import { ArrowRight, AudioLines, Search, Users, Activity, Filter, Lock } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useWorkspace } from '../components/workspace/useWorkspace';
 import PaginationControl from '../components/ui/PaginationControl';
 
-const filterOptions = ['All Meetings', 'Process Next', 'Risks Found', 'Has Audio'];
+const filterOptions = [
+  'All Meetings',
+  'Ready',
+  'Pending Analysis',
+  'Processing',
+  'Risks Found',
+  'Has Audio',
+  'Transcript Ready',
+];
+
 const scorePill = {
   emerald: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
   amber: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
   rose: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20',
 };
 
-function meetingHasTranscriptText(meeting) {
-  if (String(meeting?.transcriptText || '').trim()) {
-    return true;
-  }
-
-  return Array.isArray(meeting?.transcript)
-    && meeting.transcript.some((segment) => String(segment?.text || '').trim());
-}
-
 const fadeUp = {
   hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] } }
+  visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] } },
 };
 
 const ITEMS_PER_PAGE = 4;
 
 export default function Meetings() {
   const { snapshot } = useWorkspace();
-  const [query, setQuery] = useState('');
-  const [activeFilter, setActiveFilter] = useState('All Variants');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [query, setQuery] = useState(() => String(searchParams.get('q') || '').trim());
+  const [activeFilter, setActiveFilter] = useState(() => sanitizeMeetingFilter(searchParams.get('filter')));
   const [pageRequest, setPageRequest] = useState(1);
   const deferredQuery = useDeferredValue(query);
 
@@ -50,24 +51,33 @@ export default function Meetings() {
     const normalizedQuery = deferredQuery.trim().toLowerCase();
 
     return snapshot.meetings.filter((meeting) => {
-      const matchesQuery =
-        !normalizedQuery ||
-        [
-          meeting.aiTitle,
-          meeting.rawTitle,
-          meeting.summaryParagraph,
-          meeting.participants.join(' '),
-          meeting.transcriptText,
-        ]
-          .join(' ')
-          .toLowerCase()
-          .includes(normalizedQuery);
+      const searchableText = [
+        meeting.aiTitle,
+        meeting.rawTitle,
+        meeting.summaryParagraph,
+        meeting.participants.join(' '),
+        meeting.transcriptText,
+        (meeting.tasks || []).map((task) => task?.title).join(' '),
+        (meeting.decisions || [])
+          .map((decision) => (typeof decision === 'string' ? decision : decision?.text))
+          .join(' '),
+        (meeting.meetingRisks || []).map((risk) => `${risk?.type || ''} ${risk?.message || ''}`).join(' '),
+      ]
+        .join(' ')
+        .toLowerCase();
 
-      if (!matchesQuery) return false;
+      if (normalizedQuery && !searchableText.includes(normalizedQuery)) {
+        return false;
+      }
 
-      if (activeFilter === 'Process Next') return meeting.processingStatus === 'ready';
-      if (activeFilter === 'Risks Found') return (meeting.meetingRisks?.length || 0) > 0 || Number(meeting.score?.overall || 0) < 75;
+      if (activeFilter === 'Ready') return getMeetingLifecycle(meeting) === 'ready';
+      if (activeFilter === 'Pending Analysis') return getMeetingLifecycle(meeting) === 'pending-analysis';
+      if (activeFilter === 'Processing') return getMeetingLifecycle(meeting) === 'processing';
+      if (activeFilter === 'Risks Found') {
+        return (meeting.meetingRisks?.length || 0) > 0 || Number(meeting.score?.overall || 0) < 75;
+      }
       if (activeFilter === 'Has Audio') return Boolean(meeting.audioUrl);
+      if (activeFilter === 'Transcript Ready') return meetingHasTranscriptText(meeting);
 
       return true;
     });
@@ -81,8 +91,44 @@ export default function Meetings() {
     return meetings.slice(start, start + ITEMS_PER_PAGE);
   }, [currentPage, meetings]);
 
+  const summaryCards = [
+    { label: 'Total Meetings', value: summary.total, meta: 'Meetings captured', filter: 'All Meetings' },
+    { label: 'Needs Attention', value: summary.needsAttention, meta: 'Score or risk signals', filter: 'Risks Found' },
+    { label: 'Audio Recordings', value: summary.withAudio, meta: 'Files attached', filter: 'Has Audio' },
+    { label: 'Transcript Ready', value: summary.transcriptReady, meta: 'Full text stored', filter: 'Transcript Ready' },
+  ];
+
+  function syncView({ nextQuery = query, nextFilter = activeFilter } = {}) {
+    const params = new URLSearchParams();
+    const normalizedQuery = String(nextQuery || '').trim();
+    const normalizedFilter = sanitizeMeetingFilter(nextFilter);
+
+    if (normalizedQuery) {
+      params.set('q', normalizedQuery);
+    }
+
+    if (normalizedFilter !== 'All Meetings') {
+      params.set('filter', normalizedFilter);
+    }
+
+    setSearchParams(params, { replace: true });
+  }
+
+  function handleQueryChange(nextValue) {
+    setQuery(nextValue);
+    setPageRequest(1);
+    syncView({ nextQuery: nextValue });
+  }
+
+  function handleFilterChange(nextFilter) {
+    const normalizedFilter = sanitizeMeetingFilter(nextFilter);
+    setActiveFilter(normalizedFilter);
+    setPageRequest(1);
+    syncView({ nextFilter: normalizedFilter });
+  }
+
   return (
-    <motion.div 
+    <motion.div
       initial="hidden"
       animate="visible"
       variants={{ visible: { transition: { staggerChildren: 0.05 } } }}
@@ -92,7 +138,7 @@ export default function Meetings() {
         <div className="absolute top-0 right-0 p-12 opacity-[0.03] dark:opacity-5 pointer-events-none text-foreground">
           <Lock className="w-64 h-64" />
         </div>
-        
+
         <div className="relative z-10 flex flex-col xl:flex-row xl:items-end justify-between gap-8 mb-10">
           <div className="max-w-2xl">
             <div className="inline-flex items-center gap-2 px-3 py-1 mb-4 rounded-full bg-primary/10 border border-primary/20 text-[10px] uppercase font-bold text-primary tracking-widest shadow-sm">
@@ -100,10 +146,10 @@ export default function Meetings() {
               Meeting Library
             </div>
             <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-foreground mb-4">
-              Your securely stored meetings and strategic decisions.
+              Saved meetings with real drill-downs.
             </h1>
             <p className="text-muted-foreground text-lg leading-relaxed font-medium">
-              Find past recordings quickly with transcripts and extracted action items.
+              Filter recordings by readiness, risk, transcript coverage, and audio presence without losing your place.
             </p>
           </div>
 
@@ -114,33 +160,36 @@ export default function Meetings() {
             <input
               type="text"
               value={query}
-              onChange={(event) => {
-                setQuery(event.target.value);
-                setPageRequest(1);
-              }}
-              placeholder="Search meetings, people, or transcripts..."
+              onChange={(event) => handleQueryChange(event.target.value)}
+              placeholder="Search meetings, people, tasks, risks, or transcripts..."
               className="w-full bg-card border border-border rounded-2xl py-4 pl-12 pr-4 text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all shadow-sm font-medium"
             />
           </div>
         </div>
 
         <div className="relative z-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[
-            { label: 'Total Meetings', value: summary.total, meta: 'Meetings captured' },
-            { label: 'Meetings to check', value: summary.needsAttention, meta: 'System noted anomalies' },
-            { label: 'Audio Recordings', value: summary.withAudio, meta: 'Files attached' },
-            { label: 'Transcript Ready', value: summary.transcriptReady, meta: 'Full text stored' },
-          ].map((item, idx) => (
-              <div key={idx} className="bg-secondary/50 border border-border rounded-2xl p-5 hover:bg-card transition-colors shadow-sm">
-              <div className="text-[10px] tracking-widest uppercase font-bold text-muted-foreground mb-3">{item.label}</div>
-              <div className="text-3xl font-extrabold text-foreground mb-1">{item.value}</div>
-              <div className="text-xs font-semibold text-muted-foreground/80">{item.meta}</div>
-            </div>
+          {summaryCards.map((card) => (
+            <button
+              key={card.label}
+              type="button"
+              onClick={() => handleFilterChange(card.filter)}
+              className={`rounded-2xl border p-5 text-left shadow-sm transition-all ${
+                activeFilter === card.filter
+                  ? 'border-primary/40 bg-primary/5'
+                  : 'border-border bg-secondary/50 hover:bg-card'
+              }`}
+            >
+              <div className="text-[10px] tracking-widest uppercase font-bold text-muted-foreground mb-3">{card.label}</div>
+              <div className="text-3xl font-extrabold text-foreground mb-1">{card.value}</div>
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-xs font-semibold text-muted-foreground/80">{card.meta}</div>
+                <ArrowRight className="h-4 w-4 text-muted-foreground" />
+              </div>
+            </button>
           ))}
         </div>
       </motion.section>
 
-      {/* Constraints & Grid */}
       <motion.section variants={fadeUp} className="space-y-6">
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 glass-panel py-3 px-4">
           <div className="flex items-center gap-2 w-full overflow-x-auto snap-x pb-2 sm:pb-0 scrollbar-hide">
@@ -151,10 +200,8 @@ export default function Meetings() {
             {filterOptions.map((option) => (
               <button
                 key={option}
-                onClick={() => {
-                  setActiveFilter(option);
-                  setPageRequest(1);
-                }}
+                type="button"
+                onClick={() => handleFilterChange(option)}
                 className={`shrink-0 snap-start px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest transition-all ${
                   activeFilter === option
                     ? 'bg-foreground text-background shadow-md'
@@ -166,7 +213,8 @@ export default function Meetings() {
             ))}
           </div>
           <div className="shrink-0 text-xs text-muted-foreground uppercase tracking-widest font-bold pr-2">
-            Showing <span className="text-foreground">{paginatedMeetings.length}</span> of <span className="text-foreground">{meetings.length}</span> Meetings
+            Showing <span className="text-foreground">{paginatedMeetings.length}</span> of{' '}
+            <span className="text-foreground">{meetings.length}</span> Meetings
           </div>
         </div>
 
@@ -194,7 +242,9 @@ export default function Meetings() {
                       <h2 className="text-2xl font-bold text-foreground group-hover:text-primary transition-colors tracking-tight">
                         {meeting.aiTitle}
                       </h2>
-                      <div className="text-xs font-semibold text-muted-foreground/80 mt-1 uppercase tracking-widest">{meeting.rawTitle}</div>
+                      <div className="text-xs font-semibold text-muted-foreground/80 mt-1 uppercase tracking-widest">
+                        {meeting.rawTitle}
+                      </div>
                     </div>
                     <div className={`shrink-0 rounded-md border px-3 py-1.5 text-[10px] uppercase tracking-widest font-bold ${scorePill[meeting.score.color]}`}>
                       Score {meeting.score.overall}%
@@ -206,21 +256,28 @@ export default function Meetings() {
                   </p>
 
                   <div className="flex flex-wrap gap-2 mb-6">
-                    {[{
-                      label: `${meeting.tasks.length} Tasks`,
-                      color: 'bg-secondary text-secondary-foreground'
-                    }, {
-                      label: `${meeting.decisions.length} Decisions`,
-                      color: 'bg-secondary text-secondary-foreground'
-                    }, {
-                      label: `${meeting.meetingRisks.length} Risks`,
-                      color: 'bg-red-500/10 text-red-600 dark:text-red-400'
-                    }].map((pill, i) => (
-                      <span key={i} className={`px-2.5 py-1 text-xs font-bold rounded-lg border border-transparent shadow-sm ${pill.color}`}>
+                    {[
+                      {
+                        label: `${meeting.tasks.length} Tasks`,
+                        color: 'bg-secondary text-secondary-foreground',
+                      },
+                      {
+                        label: `${meeting.decisions.length} Decisions`,
+                        color: 'bg-secondary text-secondary-foreground',
+                      },
+                      {
+                        label: `${meeting.meetingRisks.length} Risks`,
+                        color: 'bg-red-500/10 text-red-600 dark:text-red-400',
+                      },
+                    ].map((pill, index) => (
+                      <span
+                        key={index}
+                        className={`px-2.5 py-1 text-xs font-bold rounded-lg border border-transparent shadow-sm ${pill.color}`}
+                      >
                         {pill.label}
                       </span>
                     ))}
-                    
+
                     <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold rounded-lg border border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-400 shadow-sm">
                       <Users className="w-3.5 h-3.5" />
                       {meeting.participants.length || 0} People
@@ -252,15 +309,76 @@ export default function Meetings() {
         {meetings.length === 0 && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass-panel text-center py-24 border-dashed">
             <div className="w-16 h-16 rounded-full bg-secondary flex items-center justify-center mx-auto mb-4">
-               <Lock className="w-8 h-8 text-muted-foreground" />
+              <Lock className="w-8 h-8 text-muted-foreground" />
             </div>
             <h3 className="text-xl font-bold text-foreground">No Meetings Found</h3>
             <p className="text-muted-foreground text-sm font-medium mt-2 max-w-sm mx-auto">
-              Try changing your search to find more meetings.
+              Try another filter or upload a fresh recording to populate the library.
             </p>
           </motion.div>
         )}
       </motion.section>
     </motion.div>
   );
+}
+
+function sanitizeMeetingFilter(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+
+  if (normalized === 'process next' || normalized === 'ready') {
+    return 'Ready';
+  }
+
+  if (normalized === 'pending analysis' || normalized === 'pending-analysis') {
+    return 'Pending Analysis';
+  }
+
+  if (normalized === 'processing') {
+    return 'Processing';
+  }
+
+  if (normalized === 'risks found') {
+    return 'Risks Found';
+  }
+
+  if (normalized === 'has audio') {
+    return 'Has Audio';
+  }
+
+  if (normalized === 'transcript ready') {
+    return 'Transcript Ready';
+  }
+
+  return 'All Meetings';
+}
+
+function getMeetingLifecycle(meeting) {
+  const status = String(meeting?.processingStatus || meeting?.status || '').trim().toLowerCase();
+
+  if (status === 'ready' || status === 'completed') {
+    return 'ready';
+  }
+
+  if (status === 'processing') {
+    return 'processing';
+  }
+
+  if (status === 'pending-analysis' || status.startsWith('raw-uploaded:') || status.startsWith('audio-uploaded:')) {
+    return 'pending-analysis';
+  }
+
+  if (meetingHasTranscriptText(meeting)) {
+    return 'ready';
+  }
+
+  return 'unknown';
+}
+
+function meetingHasTranscriptText(meeting) {
+  if (String(meeting?.transcriptText || '').trim()) {
+    return true;
+  }
+
+  return Array.isArray(meeting?.transcript)
+    && meeting.transcript.some((segment) => String(segment?.text || '').trim());
 }

@@ -1,5 +1,6 @@
 import { CloudUpload, ShieldCheck } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { Link } from 'react-router-dom';
 import MeetingProcessor from '../components/processor/MeetingProcessor';
 
 export default function UploadHub() {
@@ -26,16 +27,27 @@ export default function UploadHub() {
             <p className="max-w-2xl text-lg font-medium text-muted-foreground leading-relaxed">
               Upload recordings missing from the automated pipeline directly here.
             </p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Link to="/dashboard/meetings" className="button-secondary">
+                Open Meeting Vault
+              </Link>
+              <Link to="/dashboard/settings?panel=ai-integration" className="button-secondary">
+                Check Processing Status
+              </Link>
+            </div>
           </div>
-          <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-5 py-4 text-emerald-700 dark:text-emerald-400 max-w-sm shadow-sm backdrop-blur-md">
+          <Link
+            to="/dashboard/settings?panel=ai-integration"
+            className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-5 py-4 text-emerald-700 dark:text-emerald-400 max-w-sm shadow-sm backdrop-blur-md transition hover:bg-emerald-500/15"
+          >
             <div className="flex items-center gap-2 font-extrabold text-sm mb-1 uppercase tracking-widest">
               <ShieldCheck className="h-4 w-4" />
               Safe Processing
             </div>
             <div className="text-xs font-semibold leading-relaxed">
-              Uploading manually will securely process this file matching it to your workspace.
+              Uploading manually will securely process this file and keep it visible in the workspace even if deeper analysis has to resume later.
             </div>
-          </div>
+          </Link>
         </div>
       </section>
 

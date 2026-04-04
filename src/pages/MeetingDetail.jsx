@@ -34,6 +34,7 @@ import {
   updateWorkspaceParticipant,
   updateWorkspaceTask,
 } from '../lib/workspace-data';
+import { getRiskPlaybook } from '../lib/risk-playbooks';
 
 function scoreBarClass(color) {
   if (color === 'emerald') return 'bg-emerald-500';
@@ -82,6 +83,9 @@ export default function MeetingDetail() {
   const [transcriptQuery, setTranscriptQuery] = useState('');
   const meetingCardPressTimerRef = useRef(null);
   const meetingActionMenuRef = useRef(null);
+  const audioSectionRef = useRef(null);
+  const tasksSectionRef = useRef(null);
+  const transcriptSectionRef = useRef(null);
 
   const meeting = useMemo(
     () => snapshot.meetings.find((item) => item.id === meetingId),
@@ -430,6 +434,19 @@ export default function MeetingDetail() {
     clearMeetingCardPressTimer();
   }
 
+  function handleRiskTarget(target) {
+    const refMap = {
+      audio: audioSectionRef,
+      tasks: tasksSectionRef,
+      transcript: transcriptSectionRef,
+    };
+
+    const targetRef = refMap[target];
+    if (targetRef?.current) {
+      targetRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
+
   return (
     <motion.div 
       initial="hidden"
@@ -609,7 +626,7 @@ export default function MeetingDetail() {
         
         {/* Playback & Roster Side */}
         <div className="space-y-6">
-          <div className="glass-panel p-8">
+          <div ref={audioSectionRef} className="glass-panel p-8">
             <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.24em] text-muted-foreground mb-4">
               <FileAudio className="h-4 w-4 text-primary" />
               Audio Recording
@@ -649,7 +666,7 @@ export default function MeetingDetail() {
             </div>
           </div>
 
-          <div className="glass-panel p-8">
+          <div ref={tasksSectionRef} className="glass-panel p-8">
             <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.24em] text-muted-foreground mb-4">
               <Users className="h-4 w-4 text-blue-500" />
               People in the room
@@ -901,8 +918,11 @@ export default function MeetingDetail() {
             </h2>
 
             <div className="space-y-3">
-              {(meeting.meetingRisks || []).map((risk) => (
-                <div key={risk.id} className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4">
+              {(meeting.meetingRisks || []).map((risk, index) => {
+                const playbook = getRiskPlaybook({ risk, meeting });
+
+                return (
+                <div key={risk.id || `${risk.type}-${index}`} className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4">
                   <div className="flex items-center justify-between gap-2 mb-2">
                     <div className="text-sm font-extrabold text-amber-700 dark:text-amber-400">
                       {risk.type}
@@ -914,8 +934,48 @@ export default function MeetingDetail() {
                   <p className="text-sm leading-relaxed text-muted-foreground font-medium">
                     {risk.message}
                   </p>
+
+                  <div className="mt-4 rounded-2xl border border-amber-500/15 bg-background/70 p-4">
+                    <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-amber-700 dark:text-amber-400">
+                      {playbook.heading}
+                    </div>
+                    <div className="mt-3 space-y-3">
+                      {playbook.steps.map((step, stepIndex) => (
+                        <div key={`${risk.id || risk.type}-step-${stepIndex}`} className="flex items-start gap-3">
+                          <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500/10 text-[11px] font-extrabold text-amber-700 dark:text-amber-400">
+                            {stepIndex + 1}
+                          </div>
+                          <p className="text-sm leading-6 text-foreground">{step}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {playbook.actions.map((action) =>
+                        action.to ? (
+                          <Link
+                            key={`${risk.id || risk.type}-${action.label}`}
+                            to={action.to}
+                            className="button-secondary text-xs"
+                          >
+                            {action.label}
+                          </Link>
+                        ) : (
+                          <button
+                            key={`${risk.id || risk.type}-${action.label}`}
+                            type="button"
+                            onClick={() => handleRiskTarget(action.target)}
+                            className="button-secondary text-xs"
+                          >
+                            {action.label}
+                          </button>
+                        )
+                      )}
+                    </div>
+                  </div>
                 </div>
-              ))}
+                );
+              })}
 
               {(meeting.meetingRisks || []).length === 0 && (
                 <div className="rounded-2xl border border-dashed border-border bg-secondary/50 p-6 text-sm text-muted-foreground text-center font-medium">
@@ -943,7 +1003,7 @@ export default function MeetingDetail() {
       </motion.section>
 
       {/* Transcript Log Below */}
-      <motion.section variants={fadeUp} className="glass-panel p-8 md:p-10">
+      <motion.section ref={transcriptSectionRef} variants={fadeUp} className="glass-panel p-8 md:p-10">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-6 mb-8 border-b border-border pb-6">
           <div>
             <div className="text-[10px] font-bold uppercase tracking-[0.24em] text-muted-foreground mb-2">

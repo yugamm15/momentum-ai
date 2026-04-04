@@ -1,8 +1,10 @@
-import { useMemo, useState } from 'react';
-import { AlertTriangle, BarChart3, Gauge, Users, FileText, Pencil, Trash2, X } from 'lucide-react';
+import { useMemo, useRef, useState } from 'react';
+import { AlertTriangle, BarChart3, Gauge, Users, FileText, Pencil, Trash2, X, ArrowRight } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useWorkspace } from '../components/workspace/useWorkspace';
 import { AnimatePresence, motion } from 'framer-motion';
 import { updateWorkspaceParticipant } from '../lib/workspace-data';
+import { getRiskPlaybook } from '../lib/risk-playbooks';
 
 function barColor(score) {
   if (score >= 80) return 'bg-emerald-500';
@@ -12,7 +14,7 @@ function barColor(score) {
 
 const fadeUp = {
   hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] } }
+  visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] } },
 };
 
 function meetingHasTranscriptText(meeting) {
@@ -28,6 +30,8 @@ export default function Analytics() {
   const { snapshot, refresh } = useWorkspace();
   const { analytics, meetings, people } = snapshot;
   const transcriptReadyMeetings = meetings.filter(meetingHasTranscriptText).length;
+  const peopleSectionRef = useRef(null);
+  const trustSectionRef = useRef(null);
   const [personModal, setPersonModal] = useState({
     open: false,
     personId: '',
@@ -38,11 +42,51 @@ export default function Analytics() {
   const [savingPerson, setSavingPerson] = useState(false);
   const [deletingPerson, setDeletingPerson] = useState(false);
   const [surfaceError, setSurfaceError] = useState('');
+  const [selectedRisk, setSelectedRisk] = useState(null);
 
   const selectedPerson = useMemo(
     () => (people || []).find((person) => person.id === personModal.personId) || null,
     [people, personModal.personId]
   );
+
+  const summaryCards = [
+    {
+      label: 'Execution Debt',
+      value: analytics.meetingDebt,
+      meta: 'Open ambiguity signals',
+      icon: Gauge,
+      tone: 'text-violet-600',
+      chip: 'bg-violet-500/10 border-violet-500/20',
+      to: buildDashboardPath('/dashboard/tasks', { filter: 'Needs review', status: 'needs-review' }),
+    },
+    {
+      label: 'Unassigned Tasks',
+      value: analytics.unassignedTasks,
+      meta: 'Ownership gaps',
+      icon: Users,
+      tone: 'text-amber-600',
+      chip: 'bg-amber-500/10 border-amber-500/20',
+      to: buildDashboardPath('/dashboard/tasks', { filter: 'Unassigned' }),
+    },
+    {
+      label: 'People Tracked',
+      value: analytics.peopleTracked || people.length,
+      meta: 'Workspace + meeting participants',
+      icon: BarChart3,
+      tone: 'text-violet-600',
+      chip: 'bg-violet-500/10 border-violet-500/20',
+      onClick: () => peopleSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+    },
+    {
+      label: 'Transcript Ready',
+      value: transcriptReadyMeetings,
+      meta: 'Meetings with full text',
+      icon: FileText,
+      tone: 'text-emerald-600',
+      chip: 'bg-emerald-500/10 border-emerald-500/20',
+      to: buildDashboardPath('/dashboard/meetings', { filter: 'Transcript Ready' }),
+    },
+  ];
 
   function normalizePersonKey(value) {
     return String(value || '')
@@ -111,6 +155,14 @@ export default function Analytics() {
     });
   }
 
+  function openRiskModal(risk) {
+    setSelectedRisk(risk);
+  }
+
+  function closeRiskModal() {
+    setSelectedRisk(null);
+  }
+
   async function applyPersonMutation({ removePerson }) {
     const currentName = String(personModal.displayName || '').trim();
     const nextName = String(personModal.draftName || '').trim();
@@ -174,7 +226,9 @@ export default function Analytics() {
   }
 
   async function handleDeletePerson() {
-    const confirmed = window.confirm(`Remove ${personModal.displayName || 'this person'} from all meeting rosters and task ownership?`);
+    const confirmed = window.confirm(
+      `Remove ${personModal.displayName || 'this person'} from all meeting rosters and task ownership?`
+    );
     if (!confirmed) {
       return;
     }
@@ -182,8 +236,18 @@ export default function Analytics() {
     await applyPersonMutation({ removePerson: true });
   }
 
+  const selectedRiskPlaybook = selectedRisk
+    ? getRiskPlaybook({
+        risk: {
+          type: selectedRisk.label,
+          label: selectedRisk.label,
+          message: `${selectedRisk.value} meeting${selectedRisk.value === 1 ? '' : 's'} currently surface this pattern.`,
+        },
+      })
+    : null;
+
   return (
-    <motion.div 
+    <motion.div
       initial="hidden"
       animate="visible"
       variants={{ visible: { transition: { staggerChildren: 0.1 } } }}
@@ -212,52 +276,20 @@ export default function Analytics() {
             Telemetry
           </div>
           <h1 className="mt-2 text-4xl sm:text-5xl font-extrabold tracking-tight mb-4">
-            Flow state & Accountability
+            Flow state & accountability
           </h1>
           <p className="mt-2 max-w-3xl text-lg font-medium text-white/80 leading-relaxed">
-            The point of the analytics surface is not volume. It is to show where the system is trustworthy, where it still needs human review, and how accountability is spreading across the workspace.
+            This surface is only useful if every metric can take you to the work behind it. The click path should stay
+            as grounded as the analysis itself.
           </p>
         </div>
       </motion.section>
 
       <motion.section variants={fadeUp} className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
-        {[
-          {
-            label: 'Execution Debt',
-            value: analytics.meetingDebt,
-            meta: 'Open ambiguity signals',
-            icon: Gauge,
-            tone: 'text-violet-600',
-            chip: 'bg-violet-500/10 border-violet-500/20',
-          },
-          {
-            label: 'Unassigned Tasks',
-            value: analytics.unassignedTasks,
-            meta: 'Ownership gaps',
-            icon: Users,
-            tone: 'text-amber-600',
-            chip: 'bg-amber-500/10 border-amber-500/20',
-          },
-          {
-            label: 'People Tracked',
-            value: analytics.peopleTracked || people.length,
-            meta: 'Workspace + meeting participants',
-            icon: BarChart3,
-            tone: 'text-violet-600',
-            chip: 'bg-violet-500/10 border-violet-500/20',
-          },
-          {
-            label: 'Transcript Ready',
-            value: transcriptReadyMeetings,
-            meta: 'Meetings with full text',
-            icon: FileText,
-            tone: 'text-emerald-600',
-            chip: 'bg-emerald-500/10 border-emerald-500/20',
-          },
-        ].map((card) => {
+        {summaryCards.map((card) => {
           const Icon = card.icon;
-          return (
-            <div key={card.label} className="glass-panel p-6 group hover:border-primary/20 transition-all shadow-sm">
+          const content = (
+            <>
               <div className="flex items-center justify-between mb-4">
                 <div className={`text-[10px] font-bold uppercase tracking-widest text-foreground/65 ${card.tone} transition-colors`}>
                   {card.label}
@@ -266,11 +298,31 @@ export default function Analytics() {
                   <Icon className="h-4 w-4 text-foreground" />
                 </div>
               </div>
-              <div className="text-4xl font-extrabold text-foreground mb-2">
-                {card.value}
+              <div className="text-4xl font-extrabold text-foreground mb-2">{card.value}</div>
+              <div className="flex items-center justify-between gap-3 text-xs font-semibold text-foreground/70">
+                <span>{card.meta}</span>
+                <ArrowRight className="h-4 w-4 text-muted-foreground" />
               </div>
-              <div className="text-xs font-semibold text-foreground/70">{card.meta}</div>
-            </div>
+            </>
+          );
+
+          if (card.to) {
+            return (
+              <Link key={card.label} to={card.to} className="glass-panel p-6 group hover:border-primary/20 transition-all shadow-sm">
+                {content}
+              </Link>
+            );
+          }
+
+          return (
+            <button
+              key={card.label}
+              type="button"
+              onClick={card.onClick}
+              className="glass-panel p-6 group hover:border-primary/20 transition-all shadow-sm text-left"
+            >
+              {content}
+            </button>
           );
         })}
       </motion.section>
@@ -283,11 +335,15 @@ export default function Analytics() {
           <h2 className="text-3xl font-extrabold tracking-tight text-foreground mb-8">
             Execution quality over time
           </h2>
-          
+
           <div className="rounded-2xl border border-border bg-card/50 p-6">
             <div className="relative flex w-full min-h-[300px] items-end gap-4 overflow-x-auto">
               {analytics.scoreTrend.map((point) => (
-                <div key={point.id} className="flex min-w-[88px] flex-1 flex-col items-center gap-3 group relative">
+                <Link
+                  key={point.id}
+                  to={`/dashboard/meetings/${point.id}`}
+                  className="flex min-w-[88px] flex-1 flex-col items-center gap-3 group relative"
+                >
                   <div className="absolute -top-10 opacity-0 group-hover:opacity-100 transition-opacity bg-background border border-border px-3 py-1.5 rounded-lg text-xs font-bold text-foreground shadow-lg z-10 whitespace-nowrap">
                     {point.score}% Integrity
                   </div>
@@ -299,9 +355,11 @@ export default function Analytics() {
                   </div>
                   <div className="text-center w-full">
                     <div className="text-sm font-extrabold text-foreground">{point.score}</div>
-                    <div className="mt-1 text-[10px] font-bold text-foreground/70 uppercase tracking-wider truncate" title={point.label}>{point.label}</div>
+                    <div className="mt-1 text-[10px] font-bold text-foreground/70 uppercase tracking-wider truncate" title={point.label}>
+                      {point.label}
+                    </div>
                   </div>
-                </div>
+                </Link>
               ))}
               {analytics.scoreTrend.length === 0 && (
                 <div className="flex h-full w-full items-center justify-center">
@@ -324,12 +382,16 @@ export default function Analytics() {
             </h2>
             <div className="space-y-3">
               {analytics.ownerLoad.map((owner) => (
-                <div key={owner.name} className="rounded-2xl bg-violet-500/5 border border-violet-500/20 px-5 py-4 flex items-center justify-between hover:bg-card transition-colors">
+                <Link
+                  key={owner.name}
+                  to={buildOwnerTaskPath(owner.name)}
+                  className="rounded-2xl bg-violet-500/5 border border-violet-500/20 px-5 py-4 flex items-center justify-between hover:bg-card transition-colors"
+                >
                   <div className="text-sm font-bold text-foreground">{owner.name}</div>
                   <div className="rounded-lg bg-background border border-border px-3 py-1.5 text-xs font-extrabold text-foreground shadow-sm">
                     {owner.count} Tasks
                   </div>
-                </div>
+                </Link>
               ))}
               {analytics.ownerLoad.length === 0 && (
                 <div className="rounded-2xl border border-dashed border-border bg-secondary/70 p-6 text-sm text-foreground/70 text-center font-medium">
@@ -348,12 +410,17 @@ export default function Analytics() {
             </h2>
             <div className="space-y-3">
               {analytics.topRisks.map((risk) => (
-                <div key={risk.label} className="rounded-2xl bg-amber-500/10 border border-amber-500/20 px-5 py-4 flex items-center justify-between shadow-sm">
+                <button
+                  key={risk.label}
+                  type="button"
+                  onClick={() => openRiskModal(risk)}
+                  className="rounded-2xl bg-amber-500/10 border border-amber-500/20 px-5 py-4 flex items-center justify-between shadow-sm transition hover:bg-amber-500/15"
+                >
                   <div className="text-sm font-bold text-amber-700 dark:text-amber-400">{risk.label}</div>
                   <div className="rounded-lg bg-background border border-border px-3 py-1.5 text-xs font-extrabold text-amber-700 dark:text-amber-400 shadow-sm">
                     {risk.value} Issues
                   </div>
-                </div>
+                </button>
               ))}
               {analytics.topRisks.length === 0 && (
                 <div className="rounded-2xl border border-dashed border-border bg-secondary/70 p-6 text-sm text-foreground/70 text-center font-medium">
@@ -366,7 +433,7 @@ export default function Analytics() {
       </motion.section>
 
       <motion.section variants={fadeUp} className="grid gap-6 xl:grid-cols-2">
-        <div className="glass-panel p-8">
+        <div ref={peopleSectionRef} className="glass-panel p-8">
           <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-violet-600 mb-4">
             <Users className="h-4 w-4 text-violet-500" />
             People Coverage
@@ -403,7 +470,7 @@ export default function Analytics() {
           </div>
         </div>
 
-        <div className="glass-panel p-8">
+        <div ref={trustSectionRef} className="glass-panel p-8">
           <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-emerald-600 mb-4">
             <AlertTriangle className="h-4 w-4 text-emerald-500" />
             System Verification
@@ -412,24 +479,109 @@ export default function Analytics() {
             Trust Posture
           </h2>
           <div className="space-y-4 text-sm leading-relaxed text-foreground font-medium">
-            <div className="rounded-2xl bg-emerald-500/5 border border-emerald-500/20 p-5 shadow-sm flex items-center justify-between">
-              <div>
-                <span className="font-extrabold text-foreground">{analytics.matchedTaskOwners || 0}</span> / {snapshot.tasks.length} tasks currently map to a workspace person.
-              </div>
-            </div>
-            <div className="rounded-2xl bg-emerald-500/5 border border-emerald-500/20 p-5 shadow-sm flex items-center justify-between">
-              <div>
-                <span className="font-extrabold text-foreground">{transcriptReadyMeetings}</span> / {meetings.length} meetings include transcript text for direct review.
-              </div>
-            </div>
-            <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-5 text-emerald-700 dark:text-emerald-400 shadow-sm">
-              <span className="font-extrabold">Acoustic Principle:</span> Speaker attribution is never hallucinated. If the system does not concretely isolate a vocal profile, the ledger explicitly omits attribution to prevent false execution routing.
-            </div>
+            <Link
+              to={buildDashboardPath('/dashboard/tasks', { filter: 'Workspace matched' })}
+              className="block rounded-2xl bg-emerald-500/5 border border-emerald-500/20 p-5 shadow-sm transition hover:bg-card"
+            >
+              <span className="font-extrabold text-foreground">{analytics.matchedTaskOwners || 0}</span> / {snapshot.tasks.length}{' '}
+              tasks currently map to a workspace person.
+            </Link>
+            <Link
+              to={buildDashboardPath('/dashboard/meetings', { filter: 'Transcript Ready' })}
+              className="block rounded-2xl bg-emerald-500/5 border border-emerald-500/20 p-5 shadow-sm transition hover:bg-card"
+            >
+              <span className="font-extrabold text-foreground">{transcriptReadyMeetings}</span> / {meetings.length} meetings
+              include transcript text for direct review.
+            </Link>
+            <button
+              type="button"
+              onClick={() => peopleSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              className="w-full rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-5 text-left text-emerald-700 dark:text-emerald-400 shadow-sm transition hover:bg-emerald-500/15"
+            >
+              <span className="font-extrabold">Attribution principle:</span> speaker ownership stays explicit. If the
+              system cannot isolate a real participant or owner, it leaves the work unassigned instead of guessing.
+            </button>
           </div>
         </div>
       </motion.section>
 
       <AnimatePresence>
+        {selectedRisk && selectedRiskPlaybook && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-background/65 backdrop-blur-sm p-4"
+            onClick={closeRiskModal}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 12, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.98 }}
+              className="w-full max-w-2xl rounded-3xl border border-border bg-card p-6 shadow-2xl"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-3 mb-4">
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-muted-foreground mb-1">
+                    Risk resolution
+                  </div>
+                  <h3 className="text-xl font-extrabold tracking-tight text-foreground leading-tight">
+                    {selectedRisk.label}
+                  </h3>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    {selectedRisk.value} meeting{selectedRisk.value === 1 ? '' : 's'} currently surface this pattern.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeRiskModal}
+                  className="rounded-xl border border-border bg-background p-2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4">
+                <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-amber-700 dark:text-amber-400">
+                  {selectedRiskPlaybook.heading}
+                </div>
+                <div className="mt-4 space-y-3">
+                  {selectedRiskPlaybook.steps.map((step, index) => (
+                    <div key={`${selectedRisk.label}-step-${index}`} className="flex items-start gap-3">
+                      <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500/10 text-[11px] font-extrabold text-amber-700 dark:text-amber-400">
+                        {index + 1}
+                      </div>
+                      <p className="text-sm leading-6 text-foreground">{step}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-5 flex flex-wrap gap-2">
+                {selectedRiskPlaybook.actions.map((action) =>
+                  action.to ? (
+                    <Link
+                      key={`${selectedRisk.label}-${action.label}`}
+                      to={action.to}
+                      onClick={closeRiskModal}
+                      className="button-secondary"
+                    >
+                      {action.label}
+                    </Link>
+                  ) : null
+                )}
+                <Link
+                  to={buildDashboardPath('/dashboard/meetings', { filter: 'Risks Found', q: selectedRisk.label })}
+                  onClick={closeRiskModal}
+                  className="button-primary"
+                >
+                  Open affected meetings
+                </Link>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
         {personModal.open && selectedPerson && (
           <motion.div
             initial={{ opacity: 0 }}
@@ -507,4 +659,28 @@ export default function Analytics() {
       </AnimatePresence>
     </motion.div>
   );
+}
+
+function buildDashboardPath(path, params = {}) {
+  const search = new URLSearchParams();
+
+  Object.entries(params).forEach(([key, value]) => {
+    const normalized = String(value || '').trim();
+    if (normalized) {
+      search.set(key, normalized);
+    }
+  });
+
+  const query = search.toString();
+  return query ? `${path}?${query}` : path;
+}
+
+function buildOwnerTaskPath(owner) {
+  const normalizedOwner = String(owner || '').trim();
+
+  if (!normalizedOwner || normalizedOwner.toLowerCase() === 'unassigned') {
+    return buildDashboardPath('/dashboard/tasks', { filter: 'Unassigned' });
+  }
+
+  return buildDashboardPath('/dashboard/tasks', { owner: normalizedOwner });
 }

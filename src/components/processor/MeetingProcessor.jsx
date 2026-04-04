@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { CheckCircle2, FileAudio, Loader2, UploadCloud } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { apiFetch } from '../../lib/api';
 
 export default function MeetingProcessor({ onComplete }) {
@@ -118,6 +119,17 @@ export default function MeetingProcessor({ onComplete }) {
       {detail && !error ? (
         <div className="relative z-10 mt-6 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-5 py-4 text-sm font-semibold text-emerald-600 dark:text-emerald-400 shadow-sm">
           {detail}
+        </div>
+      ) : null}
+
+      {status === 'done' && !error ? (
+        <div className="relative z-10 mt-4 flex flex-wrap items-center justify-center gap-3">
+          <Link to="/dashboard/meetings" className="button-secondary">
+            Open Meeting Vault
+          </Link>
+          <Link to="/dashboard/settings?panel=ai-integration" className="button-secondary">
+            View Processing Status
+          </Link>
         </div>
       ) : null}
 

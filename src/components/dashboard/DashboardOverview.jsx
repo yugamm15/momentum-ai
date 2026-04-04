@@ -55,6 +55,12 @@ export default function DashboardOverview({ snapshot, loading, error }) {
             readyMeetings.length
         )
       : 0;
+  const readyMeetingsHref = buildDashboardPath('/dashboard/meetings', { filter: 'Ready' });
+  const pendingMeetingsHref = buildDashboardPath('/dashboard/meetings', { filter: 'Pending Analysis' });
+  const reviewTasksHref = buildDashboardPath('/dashboard/tasks', { filter: 'Needs review', status: 'needs-review' });
+  const openFollowUpsHref = buildDashboardPath('/dashboard/tasks', { filter: 'Active' });
+  const transcriptSearchHref = buildDashboardPath('/dashboard/meetings', { filter: 'Transcript Ready' });
+  const uploadHref = '/dashboard/upload';
 
   if (loading) {
     return (
@@ -93,6 +99,7 @@ export default function DashboardOverview({ snapshot, loading, error }) {
                 value={readyMeetings.length}
                 meta="Completed analyses"
                 icon={<CheckCircle2 className="h-4 w-4" />}
+                to={readyMeetingsHref}
               />
               <OverviewMetric
                 label="Needs review"
@@ -100,6 +107,7 @@ export default function DashboardOverview({ snapshot, loading, error }) {
                 meta="Owner or deadline unclear"
                 icon={<AlertTriangle className="h-4 w-4" />}
                 tone="rose"
+                to={reviewTasksHref}
               />
               <OverviewMetric
                 label="Pending analysis"
@@ -107,12 +115,14 @@ export default function DashboardOverview({ snapshot, loading, error }) {
                 meta="Saved or processing"
                 icon={<FileAudio className="h-4 w-4" />}
                 tone="amber"
+                to={pendingMeetingsHref}
               />
               <OverviewMetric
                 label="Open follow-ups"
                 value={openTasks.length}
                 meta="Still moving through the board"
                 icon={<ListTodo className="h-4 w-4" />}
+                to={openFollowUpsHref}
               />
             </div>
           </div>
@@ -124,16 +134,19 @@ export default function DashboardOverview({ snapshot, loading, error }) {
                 label="Average meeting score"
                 value={`${averageActionability}%`}
                 hint="How actionable recent recordings look."
+                to={readyMeetingsHref}
               />
               <PressureRow
                 label="Unresolved review items"
                 value={reviewTasks.length}
                 hint="These are the fastest credibility wins in the demo."
+                to={reviewTasksHref}
               />
               <PressureRow
                 label="Owners carrying load"
                 value={ownerLoad.length}
                 hint="Shows whether follow-ups are clustering around a few people."
+                to={openFollowUpsHref}
               />
             </div>
             <div className="mt-8 flex flex-wrap gap-3">
@@ -160,6 +173,15 @@ export default function DashboardOverview({ snapshot, loading, error }) {
                 ? error
                 : 'Upload a real recording first so this overview can show actual follow-ups, review flags, and transcript-backed context.'}
             </p>
+            {!error && (
+              <Link
+                to={uploadHref}
+                className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-slate-950 transition hover:text-[color:var(--accent-strong)]"
+              >
+                Upload a recording
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            )}
           </section>
         )}
 
@@ -196,7 +218,15 @@ export default function DashboardOverview({ snapshot, loading, error }) {
           >
             <div className="space-y-4">
               {reviewTasks.map((task) => (
-                <div key={task.id} className="rounded-3xl border border-rose-200 bg-rose-50 px-4 py-4">
+                <Link
+                  key={task.id}
+                  to={buildDashboardPath('/dashboard/tasks', {
+                    filter: 'Needs review',
+                    status: 'needs-review',
+                    task: task.id,
+                  })}
+                  className="block rounded-3xl border border-rose-200 bg-rose-50 px-4 py-4 transition hover:border-rose-300 hover:bg-rose-100/70"
+                >
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <div className="text-sm font-semibold text-slate-950">{task.title}</div>
@@ -205,7 +235,7 @@ export default function DashboardOverview({ snapshot, loading, error }) {
                     <div className="text-xs font-semibold text-rose-700">{formatConfidence(task.confidence)}</div>
                   </div>
                   <p className="mt-3 text-sm leading-6 text-rose-900">{task.reviewReason}</p>
-                </div>
+                </Link>
               ))}
               {reviewTasks.length === 0 && (
                 <EmptyPanelCopy copy="No review items are open right now. Owners and deadlines are landing cleanly." />
@@ -220,7 +250,11 @@ export default function DashboardOverview({ snapshot, loading, error }) {
           >
             <div className="space-y-4">
               {ownerLoad.map((entry) => (
-                <div key={entry.owner} className="flex items-center justify-between gap-4">
+                <Link
+                  key={entry.owner}
+                  to={buildOwnerTaskPath(entry.owner)}
+                  className="flex items-center justify-between gap-4 rounded-2xl px-3 py-3 transition hover:bg-[color:var(--soft-panel)]"
+                >
                   <div className="text-sm font-medium text-slate-700">{entry.owner}</div>
                   <div className="flex items-center gap-3">
                     <div className="h-2 w-24 overflow-hidden rounded-full bg-[color:var(--line)]">
@@ -231,7 +265,7 @@ export default function DashboardOverview({ snapshot, loading, error }) {
                     </div>
                     <div className="w-6 text-right text-sm font-semibold text-slate-950">{entry.count}</div>
                   </div>
-                </div>
+                </Link>
               ))}
               {ownerLoad.length === 0 && (
                 <EmptyPanelCopy copy="No owner load to show yet. Open work will appear here once meetings produce follow-ups." />
@@ -248,8 +282,9 @@ export default function DashboardOverview({ snapshot, loading, error }) {
           >
             <div className="space-y-4">
               {staleTasks.map((task) => (
-                <div
+                <Link
                   key={task.id}
+                  to={buildDashboardPath('/dashboard/tasks', { task: task.id })}
                   className="flex items-start justify-between gap-4 border-b border-[color:var(--line)] py-4 first:pt-0 last:border-b-0 last:pb-0"
                 >
                   <div>
@@ -264,7 +299,7 @@ export default function DashboardOverview({ snapshot, loading, error }) {
                     </div>
                   </div>
                   <Clock3 className="mt-1 h-4 w-4 shrink-0 text-slate-400" />
-                </div>
+                </Link>
               ))}
               {staleTasks.length === 0 && (
                 <EmptyPanelCopy copy="No stale follow-ups are visible yet. Once tasks remain open across refreshes, they will surface here." />
@@ -279,24 +314,28 @@ export default function DashboardOverview({ snapshot, loading, error }) {
                 title="Open Meetings"
                 body="Show one completed meeting and open its detail view."
                 icon={<Search className="h-4 w-4" />}
+                to={readyMeetingsHref}
               />
               <Step
                 index="2"
                 title="Inspect evidence"
                 body="Scroll through extracted follow-ups and point to the source wording."
                 icon={<CheckCircle2 className="h-4 w-4" />}
+                to={transcriptSearchHref}
               />
               <Step
                 index="3"
                 title="Resolve one ambiguity"
                 body="Move one needs-review task into a clear owner and deadline."
                 icon={<AlertTriangle className="h-4 w-4" />}
+                to={reviewTasksHref}
               />
               <Step
                 index="4"
                 title="Upload a real recording"
                 body="End with a live upload so the workspace feels current instead of staged."
                 icon={<FileAudio className="h-4 w-4" />}
+                to={uploadHref}
               />
             </div>
           </Panel>
@@ -306,7 +345,7 @@ export default function DashboardOverview({ snapshot, loading, error }) {
   );
 }
 
-function OverviewMetric({ label, value, meta, icon, tone = 'default' }) {
+function OverviewMetric({ label, value, meta, icon, tone = 'default', to }) {
   const iconClass =
     tone === 'rose'
       ? 'text-rose-700 bg-rose-100'
@@ -314,27 +353,54 @@ function OverviewMetric({ label, value, meta, icon, tone = 'default' }) {
         ? 'text-amber-700 bg-amber-100'
         : 'text-slate-950 bg-[color:var(--soft-panel)]';
 
-  return (
-    <div className="rounded-[28px] border border-[color:var(--line)] bg-white px-4 py-4">
+  const content = (
+    <>
       <div className="flex items-center justify-between gap-3">
         <div className={`flex h-10 w-10 items-center justify-center rounded-2xl ${iconClass}`}>{icon}</div>
         <div className="text-2xl font-semibold tracking-tight text-slate-950">{value}</div>
       </div>
       <div className="mt-4 text-sm font-semibold text-slate-950">{label}</div>
       <div className="mt-1 text-sm text-slate-600">{meta}</div>
-    </div>
+    </>
+  );
+
+  if (!to) {
+    return <div className="rounded-[28px] border border-[color:var(--line)] bg-white px-4 py-4">{content}</div>;
+  }
+
+  return (
+    <Link to={to} className="rounded-[28px] border border-[color:var(--line)] bg-white px-4 py-4 transition hover:border-slate-300 hover:bg-[color:var(--soft-panel)]">
+      {content}
+    </Link>
   );
 }
 
-function PressureRow({ label, value, hint }) {
-  return (
-    <div className="border-b border-[color:var(--line)] pb-5 last:border-b-0 last:pb-0">
+function PressureRow({ label, value, hint, to }) {
+  const content = (
+    <>
       <div className="flex items-center justify-between gap-3">
         <div className="text-sm font-semibold text-slate-950">{label}</div>
         <div className="text-lg font-semibold tracking-tight text-slate-950">{value}</div>
       </div>
       <div className="mt-1 text-sm text-slate-600">{hint}</div>
-    </div>
+    </>
+  );
+
+  if (!to) {
+    return (
+      <div className="border-b border-[color:var(--line)] pb-5 last:border-b-0 last:pb-0">
+        {content}
+      </div>
+    );
+  }
+
+  return (
+    <Link
+      to={to}
+      className="block border-b border-[color:var(--line)] pb-5 transition hover:text-[color:var(--accent-strong)] last:border-b-0 last:pb-0"
+    >
+      {content}
+    </Link>
   );
 }
 
@@ -353,9 +419,9 @@ function EmptyPanelCopy({ copy }) {
   return <p className="rounded-3xl bg-[color:var(--soft-panel)] px-4 py-4 text-sm leading-6 text-slate-600">{copy}</p>;
 }
 
-function Step({ index, title, body, icon }) {
-  return (
-    <div className="flex gap-4">
+function Step({ index, title, body, icon, to }) {
+  const content = (
+    <>
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[color:var(--soft-panel)] text-slate-950">
         {icon}
       </div>
@@ -364,7 +430,17 @@ function Step({ index, title, body, icon }) {
         <div className="mt-1 text-sm font-semibold text-slate-950">{title}</div>
         <div className="mt-1 text-sm text-slate-600">{body}</div>
       </div>
-    </div>
+    </>
+  );
+
+  if (!to) {
+    return <div className="flex gap-4">{content}</div>;
+  }
+
+  return (
+    <Link to={to} className="flex gap-4 rounded-2xl px-2 py-2 transition hover:bg-[color:var(--soft-panel)]">
+      {content}
+    </Link>
   );
 }
 
@@ -532,4 +608,28 @@ function getTaskTimestamp(task) {
   const source = task?.updatedAt || task?.updated_at || task?.createdAt || task?.created_at || '';
   const parsed = Date.parse(source);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function buildDashboardPath(path, params = {}) {
+  const search = new URLSearchParams();
+
+  Object.entries(params).forEach(([key, value]) => {
+    const normalizedValue = String(value || '').trim();
+    if (normalizedValue) {
+      search.set(key, normalizedValue);
+    }
+  });
+
+  const query = search.toString();
+  return query ? `${path}?${query}` : path;
+}
+
+function buildOwnerTaskPath(owner) {
+  const normalizedOwner = String(owner || '').trim();
+
+  if (!normalizedOwner || normalizedOwner.toLowerCase() === 'unassigned') {
+    return buildDashboardPath('/dashboard/tasks', { filter: 'Unassigned' });
+  }
+
+  return buildDashboardPath('/dashboard/tasks', { owner: normalizedOwner });
 }
