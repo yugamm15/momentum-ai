@@ -195,57 +195,62 @@ export async function updateMeetingRecord(supabase, meetingId, updates = {}) {
   if (mode === 'v2') {
     const workspaceId = String(updates?.workspaceId || '').trim();
     const meeting = await findScopedMeetingRow(supabase, normalizedMeetingId, workspaceId);
-    if (!meeting?.id) {
-      throw new Error('Momentum could not find this meeting in the current workspace.');
+    if (meeting?.id) {
+      const { error } = await supabase
+        .from('meetings')
+        .update({
+          ai_title: nextTitle,
+          source_meeting_label: nextTitle,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', normalizedMeetingId);
+
+      if (error) {
+        throw error;
+      }
+
+      // Keep linked legacy row in sync when available.
+      const linkedLegacyId = cleanNullable(meeting?.legacy_meeting_id);
+      if (linkedLegacyId) {
+        const legacyTables = await getLegacyTableNames(supabase);
+        if (legacyTables.meetings === 'old_meetings') {
+          await updateLegacyMeetingTitleRecord(
+            supabase,
+            legacyTables,
+            linkedLegacyId,
+            nextTitle
+          ).catch(() => false);
+        }
+      }
+
+      return { ok: true, mode };
     }
 
-    const { error } = await supabase
-      .from('meetings')
-      .update({
-        ai_title: nextTitle,
-        source_meeting_label: nextTitle,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', normalizedMeetingId);
-
-    if (error) {
-      throw error;
+    const legacyTables = await getLegacyTableNames(supabase);
+    if (legacyTables.meetings === 'old_meetings') {
+      const updatedLegacy = await updateLegacyMeetingTitleRecord(
+        supabase,
+        legacyTables,
+        normalizedMeetingId,
+        nextTitle
+      );
+      if (updatedLegacy) {
+        return { ok: true, mode: 'legacy' };
+      }
     }
 
-    return { ok: true, mode };
+    throw new Error('Momentum could not find this meeting in the current workspace.');
   }
 
   const legacyTables = await getLegacyTableNames(supabase);
-  const { data: legacyMeeting, error: meetingError } = await supabase
-    .from(legacyTables.meetings)
-    .select('id, summary')
-    .eq('id', normalizedMeetingId)
-    .maybeSingle();
-
-  if (meetingError) {
-    throw meetingError;
-  }
-
-  if (!legacyMeeting?.id) {
+  const updatedLegacy = await updateLegacyMeetingTitleRecord(
+    supabase,
+    legacyTables,
+    normalizedMeetingId,
+    nextTitle
+  );
+  if (!updatedLegacy) {
     throw new Error('Momentum could not find this legacy meeting record.');
-  }
-
-  const parsedSummary = parseLegacySummaryMetadata(legacyMeeting.summary);
-  const nextSummary = buildLegacySummaryWithMetadata(parsedSummary.visibleSummary, {
-    ...parsedSummary.metadata,
-    meetingLabel: nextTitle,
-  });
-
-  const { error } = await supabase
-    .from(legacyTables.meetings)
-    .update({
-      title: nextTitle,
-      summary: nextSummary,
-    })
-    .eq('id', normalizedMeetingId);
-
-  if (error) {
-    throw error;
   }
 
   return { ok: true, mode };
@@ -262,49 +267,67 @@ export async function deleteMeetingRecord(supabase, meetingId, options = {}) {
   if (mode === 'v2') {
     const workspaceId = String(options?.workspaceId || '').trim();
     const meeting = await findScopedMeetingRow(supabase, normalizedMeetingId, workspaceId);
-    if (!meeting?.id) {
-      throw new Error('Momentum could not find this meeting in the current workspace.');
+    if (meeting?.id) {
+      const childDeletes = await Promise.all([
+        supabase.from('meeting_participants').delete().eq('meeting_id', normalizedMeetingId),
+        supabase.from('meeting_transcript_segments').delete().eq('meeting_id', normalizedMeetingId),
+        supabase.from('meeting_decisions').delete().eq('meeting_id', normalizedMeetingId),
+        supabase.from('meeting_tasks').delete().eq('meeting_id', normalizedMeetingId),
+        supabase.from('meeting_checklist_items').delete().eq('meeting_id', normalizedMeetingId),
+        supabase.from('meeting_risk_flags').delete().eq('meeting_id', normalizedMeetingId),
+        supabase.from('meeting_processing_events').delete().eq('meeting_id', normalizedMeetingId),
+      ]);
+
+      const childFailure = childDeletes.find((result) => result?.error);
+      if (childFailure?.error) {
+        throw childFailure.error;
+      }
+
+      const { error: meetingDeleteError } = await supabase
+        .from('meetings')
+        .delete()
+        .eq('id', normalizedMeetingId);
+
+      if (meetingDeleteError) {
+        throw meetingDeleteError;
+      }
+
+      // Clean up linked legacy rows for hybrid environments.
+      const linkedLegacyId = cleanNullable(meeting?.legacy_meeting_id);
+      if (linkedLegacyId) {
+        const legacyTables = await getLegacyTableNames(supabase);
+        if (legacyTables.meetings === 'old_meetings') {
+          await deleteLegacyMeetingRows(supabase, legacyTables, linkedLegacyId).catch(() => false);
+        }
+      }
+
+      return { ok: true, mode };
     }
 
-    const childDeletes = await Promise.all([
-      supabase.from('meeting_participants').delete().eq('meeting_id', normalizedMeetingId),
-      supabase.from('meeting_transcript_segments').delete().eq('meeting_id', normalizedMeetingId),
-      supabase.from('meeting_decisions').delete().eq('meeting_id', normalizedMeetingId),
-      supabase.from('meeting_tasks').delete().eq('meeting_id', normalizedMeetingId),
-      supabase.from('meeting_checklist_items').delete().eq('meeting_id', normalizedMeetingId),
-      supabase.from('meeting_risk_flags').delete().eq('meeting_id', normalizedMeetingId),
-      supabase.from('meeting_processing_events').delete().eq('meeting_id', normalizedMeetingId),
-    ]);
+    const legacyTables = await getLegacyTableNames(supabase);
+    if (legacyTables.meetings === 'old_meetings') {
+      const deletedLegacy = await deleteLegacyMeetingRows(
+        supabase,
+        legacyTables,
+        normalizedMeetingId
+      );
 
-    const childFailure = childDeletes.find((result) => result?.error);
-    if (childFailure?.error) {
-      throw childFailure.error;
+      if (deletedLegacy) {
+        return { ok: true, mode: 'legacy' };
+      }
     }
 
-    const { error: meetingDeleteError } = await supabase
-      .from('meetings')
-      .delete()
-      .eq('id', normalizedMeetingId);
-
-    if (meetingDeleteError) {
-      throw meetingDeleteError;
-    }
-
-    return { ok: true, mode };
+    throw new Error('Momentum could not find this meeting in the current workspace.');
   }
 
   const legacyTables = await getLegacyTableNames(supabase);
-  const [legacyTaskDelete, legacyMeetingDelete] = await Promise.all([
-    supabase.from(legacyTables.tasks).delete().eq('meeting_id', normalizedMeetingId),
-    supabase.from(legacyTables.meetings).delete().eq('id', normalizedMeetingId),
-  ]);
-
-  if (legacyTaskDelete?.error) {
-    throw legacyTaskDelete.error;
-  }
-
-  if (legacyMeetingDelete?.error) {
-    throw legacyMeetingDelete.error;
+  const deletedLegacy = await deleteLegacyMeetingRows(
+    supabase,
+    legacyTables,
+    normalizedMeetingId
+  );
+  if (!deletedLegacy) {
+    throw new Error('Momentum could not find this legacy meeting record.');
   }
 
   return { ok: true, mode };
@@ -939,13 +962,95 @@ async function findScopedMeetingRow(supabase, meetingId, workspaceId) {
     return null;
   }
 
-  let query = supabase.from('meetings').select('id, workspace_id').eq('id', meetingId);
+  let query = supabase.from('meetings').select('id, workspace_id, legacy_meeting_id').eq('id', meetingId);
   if (workspaceId) {
     query = query.eq('workspace_id', workspaceId);
   }
 
   const { data } = await query.maybeSingle();
   return data || null;
+}
+
+async function updateLegacyMeetingTitleRecord(
+  supabase,
+  legacyTables,
+  legacyMeetingId,
+  nextTitle
+) {
+  const normalizedLegacyMeetingId = String(legacyMeetingId || '').trim();
+  if (!normalizedLegacyMeetingId) {
+    return false;
+  }
+
+  const { data: legacyMeeting, error: meetingError } = await supabase
+    .from(legacyTables.meetings)
+    .select('id, summary')
+    .eq('id', normalizedLegacyMeetingId)
+    .maybeSingle();
+
+  if (meetingError) {
+    throw meetingError;
+  }
+
+  if (!legacyMeeting?.id) {
+    return false;
+  }
+
+  const parsedSummary = parseLegacySummaryMetadata(legacyMeeting.summary);
+  const nextSummary = buildLegacySummaryWithMetadata(parsedSummary.visibleSummary, {
+    ...parsedSummary.metadata,
+    meetingLabel: nextTitle,
+  });
+
+  const { error } = await supabase
+    .from(legacyTables.meetings)
+    .update({
+      title: nextTitle,
+      summary: nextSummary,
+    })
+    .eq('id', normalizedLegacyMeetingId);
+
+  if (error) {
+    throw error;
+  }
+
+  return true;
+}
+
+async function deleteLegacyMeetingRows(supabase, legacyTables, legacyMeetingId) {
+  const normalizedLegacyMeetingId = String(legacyMeetingId || '').trim();
+  if (!normalizedLegacyMeetingId) {
+    return false;
+  }
+
+  const { data: legacyMeeting, error: meetingLookupError } = await supabase
+    .from(legacyTables.meetings)
+    .select('id')
+    .eq('id', normalizedLegacyMeetingId)
+    .maybeSingle();
+
+  if (meetingLookupError) {
+    throw meetingLookupError;
+  }
+
+  if (!legacyMeeting?.id) {
+    return false;
+  }
+
+  const [legacyTaskDelete, legacyMeetingDelete] = await Promise.all([
+    supabase.from(legacyTables.tasks).delete().eq('meeting_id', normalizedLegacyMeetingId),
+    supabase.from(legacyTables.meetings).delete().eq('id', normalizedLegacyMeetingId),
+  ]);
+
+  if (legacyTaskDelete?.error) {
+    throw legacyTaskDelete.error;
+  }
+
+  if (legacyMeetingDelete?.error) {
+    throw legacyMeetingDelete.error;
+  }
+
+  return true;
 }
 
 async function findV2TaskRow(supabase, taskId, workspaceId) {

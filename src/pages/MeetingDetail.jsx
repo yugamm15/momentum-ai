@@ -888,6 +888,40 @@ export default function MeetingDetail() {
               )}
             </div>
           </div>
+
+          <div className="glass-panel p-8">
+            <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.24em] text-muted-foreground mb-4">
+              <AlertTriangle className="h-4 w-4 text-amber-500" />
+              Risk Signals
+            </div>
+            <h2 className="text-2xl font-extrabold tracking-tight text-foreground mb-6">
+              Meeting Risks
+            </h2>
+
+            <div className="space-y-3">
+              {(meeting.meetingRisks || []).map((risk) => (
+                <div key={risk.id} className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <div className="text-sm font-extrabold text-amber-700 dark:text-amber-400">
+                      {risk.type}
+                    </div>
+                    <div className="rounded-lg border border-amber-500/25 bg-background px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-amber-700 dark:text-amber-400">
+                      {risk.severity || 'Medium'}
+                    </div>
+                  </div>
+                  <p className="text-sm leading-relaxed text-muted-foreground font-medium">
+                    {risk.message}
+                  </p>
+                </div>
+              ))}
+
+              {(meeting.meetingRisks || []).length === 0 && (
+                <div className="rounded-2xl border border-dashed border-border bg-secondary/50 p-6 text-sm text-muted-foreground text-center font-medium">
+                  No risks were detected for this meeting.
+                </div>
+              )}
+            </div>
+          </div>
           
           <div className="glass-panel p-8">
             <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.24em] text-muted-foreground mb-4">
