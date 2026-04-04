@@ -1,25 +1,35 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   ArrowLeft,
   AudioLines,
   Bot,
+  Clock3,
   CalendarClock,
   CheckCircle2,
   FileAudio,
   FileText,
   MessageSquare,
   Pencil,
+  Plus,
+  Save,
   Search,
+  Trash2,
+  User,
   Users,
   Waves,
+  X,
 } from 'lucide-react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useWorkspace } from '../components/workspace/useWorkspace';
 import {
   askMeetingQuestion,
+  createWorkspaceTask,
+  deleteWorkspaceMeeting,
   processStoredMeeting,
+  updateWorkspaceMeeting,
+  updateWorkspaceParticipant,
   updateWorkspaceTask,
 } from '../lib/workspace-data';
 
@@ -36,10 +46,31 @@ const fadeUp = {
 
 export default function MeetingDetail() {
   const { meetingId } = useParams();
+  const navigate = useNavigate();
   const { snapshot, refresh } = useWorkspace();
   const [editingTaskId, setEditingTaskId] = useState('');
   const [draft, setDraft] = useState(null);
   const [savingTask, setSavingTask] = useState(false);
+  const [showCreateTask, setShowCreateTask] = useState(false);
+  const [creatingTask, setCreatingTask] = useState(false);
+  const [newTaskDraft, setNewTaskDraft] = useState({
+    title: '',
+    owner: '',
+    dueDate: '',
+    status: 'pending',
+  });
+  const [editingMeetingTitle, setEditingMeetingTitle] = useState(false);
+  const [meetingTitleDraft, setMeetingTitleDraft] = useState('');
+  const [savingMeetingTitle, setSavingMeetingTitle] = useState(false);
+  const [deletingMeeting, setDeletingMeeting] = useState(false);
+  const [participantModal, setParticipantModal] = useState({
+    open: false,
+    participantId: '',
+    currentName: '',
+    displayName: '',
+  });
+  const [savingParticipant, setSavingParticipant] = useState(false);
+  const [removingParticipant, setRemovingParticipant] = useState(false);
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState('');
   const [asking, setAsking] = useState(false);
@@ -81,6 +112,17 @@ export default function MeetingDetail() {
       .join(' ')
       .trim();
   }, [meeting]);
+
+  useEffect(() => {
+    setMeetingTitleDraft(String(meeting?.aiTitle || '').trim());
+    setEditingMeetingTitle(false);
+    setParticipantModal({
+      open: false,
+      participantId: '',
+      currentName: '',
+      displayName: '',
+    });
+  }, [meeting?.aiTitle, meeting?.id]);
 
   if (!meeting) {
     return (
@@ -149,6 +191,152 @@ export default function MeetingDetail() {
     }
   }
 
+  async function handleSaveMeetingTitle() {
+    const normalizedTitle = String(meetingTitleDraft || '').trim();
+    if (!normalizedTitle) {
+      setSurfaceError('Meeting title cannot be empty.');
+      return;
+    }
+
+    setSavingMeetingTitle(true);
+    setSurfaceError('');
+    try {
+      await updateWorkspaceMeeting(meeting.id, normalizedTitle);
+      setEditingMeetingTitle(false);
+      await refresh({ silent: true });
+    } catch (error) {
+      setSurfaceError(error.message || 'Momentum could not update this meeting title.');
+    } finally {
+      setSavingMeetingTitle(false);
+    }
+  }
+
+  async function handleDeleteMeeting() {
+    const confirmed = window.confirm('Delete this meeting and all related tasks? This action cannot be undone.');
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingMeeting(true);
+    setSurfaceError('');
+    try {
+      await deleteWorkspaceMeeting(meeting.id);
+      await refresh({ silent: true });
+      navigate('/dashboard/meetings');
+    } catch (error) {
+      setSurfaceError(error.message || 'Momentum could not delete this meeting.');
+    } finally {
+      setDeletingMeeting(false);
+    }
+  }
+
+  function openParticipantModal(participant) {
+    setParticipantModal({
+      open: true,
+      participantId: String(participant?.id || '').trim(),
+      currentName: String(participant?.displayName || '').trim(),
+      displayName: String(participant?.displayName || '').trim(),
+    });
+    setSurfaceError('');
+  }
+
+  function closeParticipantModal() {
+    if (savingParticipant || removingParticipant) {
+      return;
+    }
+
+    setParticipantModal({
+      open: false,
+      participantId: '',
+      currentName: '',
+      displayName: '',
+    });
+  }
+
+  async function handleSaveParticipant() {
+    const normalizedName = String(participantModal.displayName || '').trim();
+    if (!normalizedName) {
+      setSurfaceError('Participant name cannot be empty.');
+      return;
+    }
+
+    setSavingParticipant(true);
+    setSurfaceError('');
+    try {
+      await updateWorkspaceParticipant({
+        meetingId: meeting.id,
+        participantId: participantModal.participantId,
+        currentName: participantModal.currentName,
+        displayName: normalizedName,
+        removeParticipant: false,
+      });
+      closeParticipantModal();
+      await refresh({ silent: true });
+    } catch (error) {
+      setSurfaceError(error.message || 'Momentum could not rename this participant.');
+    } finally {
+      setSavingParticipant(false);
+    }
+  }
+
+  async function handleRemoveParticipant() {
+    const confirmed = window.confirm(`Remove ${participantModal.currentName || 'this participant'} from the roster?`);
+    if (!confirmed) {
+      return;
+    }
+
+    setRemovingParticipant(true);
+    setSurfaceError('');
+    try {
+      await updateWorkspaceParticipant({
+        meetingId: meeting.id,
+        participantId: participantModal.participantId,
+        currentName: participantModal.currentName,
+        displayName: participantModal.displayName,
+        removeParticipant: true,
+      });
+      closeParticipantModal();
+      await refresh({ silent: true });
+    } catch (error) {
+      setSurfaceError(error.message || 'Momentum could not remove this participant.');
+    } finally {
+      setRemovingParticipant(false);
+    }
+  }
+
+  async function handleCreateTask(event) {
+    event.preventDefault();
+    const title = String(newTaskDraft.title || '').trim();
+    if (!title) {
+      setSurfaceError('Task title is required.');
+      return;
+    }
+
+    setCreatingTask(true);
+    setSurfaceError('');
+    try {
+      await createWorkspaceTask({
+        meetingId: meeting.id,
+        title,
+        owner: String(newTaskDraft.owner || '').trim(),
+        dueDate: String(newTaskDraft.dueDate || '').trim(),
+        status: String(newTaskDraft.status || 'pending').trim() || 'pending',
+      });
+      setShowCreateTask(false);
+      setNewTaskDraft({
+        title: '',
+        owner: '',
+        dueDate: '',
+        status: 'pending',
+      });
+      await refresh({ silent: true });
+    } catch (error) {
+      setSurfaceError(error.message || 'Momentum could not create this task.');
+    } finally {
+      setCreatingTask(false);
+    }
+  }
+
   return (
     <motion.div 
       initial="hidden"
@@ -178,15 +366,61 @@ export default function MeetingDetail() {
               <div className="text-[11px] font-bold uppercase tracking-[0.24em] text-muted-foreground bg-muted inline-block px-2 py-1 rounded mb-3">
                 {meeting.timeLabel}
               </div>
-              <h1 className="max-w-4xl text-4xl sm:text-5xl font-extrabold tracking-tight text-foreground mb-4 leading-tight">
-                {meeting.aiTitle}
-              </h1>
+              {editingMeetingTitle ? (
+                <div className="mb-4 space-y-3 max-w-4xl">
+                  <input
+                    value={meetingTitleDraft}
+                    onChange={(event) => setMeetingTitleDraft(event.target.value)}
+                    placeholder="Meeting title"
+                    className="w-full rounded-2xl border border-border bg-background px-4 py-3 text-2xl sm:text-3xl font-bold tracking-tight text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={handleSaveMeetingTitle}
+                      disabled={savingMeetingTitle}
+                      className="button-primary text-xs"
+                    >
+                      <Save className="h-3.5 w-3.5" />
+                      {savingMeetingTitle ? 'Saving...' : 'Save Title'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setEditingMeetingTitle(false);
+                        setMeetingTitleDraft(String(meeting.aiTitle || '').trim());
+                      }}
+                      className="button-secondary text-xs"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <h1 className="max-w-4xl text-4xl sm:text-5xl font-extrabold tracking-tight text-foreground mb-4 leading-tight">
+                  {meeting.aiTitle}
+                </h1>
+              )}
               <p className="max-w-3xl text-lg leading-relaxed text-muted-foreground font-medium mb-8">
                 {meeting.summaryParagraph}
               </p>
             </div>
             
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 items-center">
+              <button
+                onClick={() => setEditingMeetingTitle(true)}
+                className="button-secondary text-xs"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                Rename Meeting
+              </button>
+              <button
+                onClick={handleDeleteMeeting}
+                disabled={deletingMeeting}
+                className="inline-flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-xs font-bold text-destructive hover:bg-destructive/15 disabled:opacity-60"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                {deletingMeeting ? 'Deleting...' : 'Delete Meeting'}
+              </button>
               <span className="rounded-lg bg-secondary px-3 py-1.5 text-xs font-bold text-foreground shadow-sm">{meeting.source}</span>
               <span className="rounded-lg bg-secondary px-3 py-1.5 text-xs font-bold text-foreground shadow-sm">{meeting.rawTitle}</span>
               <span className="rounded-lg bg-primary/10 text-primary border border-primary/20 px-3 py-1.5 text-xs font-bold shadow-sm">{meeting.participants.length || 0} People</span>
@@ -297,25 +531,33 @@ export default function MeetingDetail() {
 
             <div className="space-y-3">
               {(meeting.participantRoster || []).map((participant) => (
-                <div key={participant.id} className="rounded-2xl bg-secondary/50 p-4 border border-border flex items-center justify-between gap-4 hover:bg-card transition-colors">
+                <button
+                  key={participant.id}
+                  type="button"
+                  onClick={() => openParticipantModal(participant)}
+                  className="w-full text-left rounded-2xl bg-secondary/50 p-4 border border-border flex items-center justify-between gap-4 hover:bg-card transition-colors"
+                >
                   <div>
                     <div className="text-sm font-bold text-foreground">{participant.displayName}</div>
                     <div className="mt-1 text-xs text-muted-foreground font-medium uppercase tracking-widest">
                       {participant.profileId ? participant.email || 'Native Match' : 'External'}
                     </div>
                   </div>
-                  <div
-                    className={`rounded-lg px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest ${
-                      participant.profileId
-                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
-                        : participant.matchStatus === 'ambiguous'
-                          ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
-                          : 'bg-background text-muted-foreground border border-border shadow-sm'
-                    }`}
-                  >
-                    {participant.profileId ? 'Verified' : participant.matchStatus === 'ambiguous' ? 'Review' : 'Guest'}
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={`rounded-lg px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest ${
+                        participant.profileId
+                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                          : participant.matchStatus === 'ambiguous'
+                            ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
+                            : 'bg-background text-muted-foreground border border-border shadow-sm'
+                      }`}
+                    >
+                      {participant.profileId ? 'Verified' : participant.matchStatus === 'ambiguous' ? 'Review' : 'Guest'}
+                    </div>
+                    <Pencil className="h-4 w-4 text-muted-foreground" />
                   </div>
-                </div>
+                </button>
               ))}
 
               {(meeting.participantRoster || []).length === 0 && (
@@ -339,10 +581,97 @@ export default function MeetingDetail() {
                   Action Items
                 </h2>
               </div>
-              <div className="bg-primary/10 text-primary border border-primary/20 px-3 py-1 rounded-lg text-xs font-bold shadow-sm">
-                {meeting.tasks.length}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCreateTask((current) => !current);
+                    setNewTaskDraft((current) => ({
+                      ...current,
+                      owner: current.owner || ownerSuggestions[0] || '',
+                    }));
+                  }}
+                  className="inline-flex items-center gap-2 rounded-lg border border-primary/25 bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary/15"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Add Action Item
+                </button>
+                <div className="bg-primary/10 text-primary border border-primary/20 px-3 py-1 rounded-lg text-xs font-bold shadow-sm">
+                  {meeting.tasks.length}
+                </div>
               </div>
             </div>
+
+            <AnimatePresence>
+              {showCreateTask && (
+                <motion.form
+                  initial={{ opacity: 0, y: -10, height: 0 }}
+                  animate={{ opacity: 1, y: 0, height: 'auto' }}
+                  exit={{ opacity: 0, y: -10, height: 0 }}
+                  onSubmit={handleCreateTask}
+                  className="overflow-hidden mb-4 rounded-2xl border border-border bg-card p-4"
+                >
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <input
+                      value={newTaskDraft.title}
+                      onChange={(event) => setNewTaskDraft((current) => ({ ...current, title: event.target.value }))}
+                      placeholder="Activity title"
+                      className="bg-background border border-border rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-primary/50 text-foreground"
+                    />
+                    <select
+                      value={newTaskDraft.owner}
+                      onChange={(event) => setNewTaskDraft((current) => ({ ...current, owner: event.target.value }))}
+                      className="bg-background border border-border rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-primary/50 text-foreground"
+                    >
+                      <option value="">Unassigned</option>
+                      {ownerSuggestions.map((owner) => (
+                        <option key={owner} value={owner}>{owner}</option>
+                      ))}
+                    </select>
+                    <input
+                      value={newTaskDraft.dueDate}
+                      onChange={(event) => setNewTaskDraft((current) => ({ ...current, dueDate: event.target.value }))}
+                      placeholder="Due date"
+                      className="bg-background border border-border rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-primary/50 text-foreground"
+                    />
+                    <select
+                      value={newTaskDraft.status}
+                      onChange={(event) => setNewTaskDraft((current) => ({ ...current, status: event.target.value }))}
+                      className="bg-background border border-border rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-primary/50 text-foreground"
+                    >
+                      <option value="pending">Pending</option>
+                      <option value="in-progress">In progress</option>
+                      <option value="needs-review">Needs review</option>
+                      <option value="done">Done</option>
+                    </select>
+                  </div>
+                  <div className="mt-3 flex items-center gap-2">
+                    <button
+                      type="submit"
+                      disabled={creatingTask || !String(newTaskDraft.title || '').trim()}
+                      className="button-primary text-xs"
+                    >
+                      {creatingTask ? 'Adding...' : 'Add Task'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowCreateTask(false);
+                        setNewTaskDraft({
+                          title: '',
+                          owner: '',
+                          dueDate: '',
+                          status: 'pending',
+                        });
+                      }}
+                      className="button-secondary text-xs"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </motion.form>
+              )}
+            </AnimatePresence>
 
             <div className="space-y-4">
               {meeting.tasks.map((task) => {
@@ -397,11 +726,13 @@ export default function MeetingDetail() {
                           <div className="min-w-0 pr-4">
                             <div className="text-base font-extrabold text-foreground leading-snug">{task.title}</div>
                             <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
-                              <span className="rounded-lg bg-background px-2.5 py-1 text-foreground shadow-sm border border-border">
-                                👤 {task.owner || 'Unassigned'}
+                              <span className="inline-flex items-center gap-1.5 rounded-lg bg-background px-2.5 py-1 text-foreground shadow-sm border border-border">
+                                <User className="h-3.5 w-3.5 text-muted-foreground" />
+                                {task.owner || 'Unassigned'}
                               </span>
-                              <span className="rounded-lg bg-background px-2.5 py-1 text-foreground shadow-sm border border-border">
-                                ⏳ {task.dueDate || 'Open'}
+                              <span className="inline-flex items-center gap-1.5 rounded-lg bg-background px-2.5 py-1 text-foreground shadow-sm border border-border">
+                                <Clock3 className="h-3.5 w-3.5 text-muted-foreground" />
+                                {task.dueDate || 'Open'}
                               </span>
                               {task.needsReview && (
                                 <span className="rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 px-2.5 py-1 shadow-sm border border-amber-500/20">
@@ -544,6 +875,81 @@ export default function MeetingDetail() {
           )}
         </div>
       </motion.section>
+
+      <AnimatePresence>
+        {participantModal.open && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm p-4"
+            onClick={closeParticipantModal}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 12, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.98 }}
+              className="w-full max-w-md rounded-3xl border border-border bg-card p-6 shadow-2xl"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.24em] text-muted-foreground mb-1">
+                    Participant Controls
+                  </div>
+                  <h3 className="text-xl font-extrabold tracking-tight text-foreground">Edit Participant</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeParticipantModal}
+                  className="rounded-lg border border-border bg-background p-2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <label className="block text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2">
+                Display Name
+              </label>
+              <input
+                value={participantModal.displayName}
+                onChange={(event) => setParticipantModal((current) => ({ ...current, displayName: event.target.value }))}
+                className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                placeholder="Participant name"
+              />
+
+              <div className="mt-5 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSaveParticipant}
+                  disabled={savingParticipant || removingParticipant}
+                  className="button-primary text-xs"
+                >
+                  <Save className="h-3.5 w-3.5" />
+                  {savingParticipant ? 'Saving...' : 'Save Name'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRemoveParticipant}
+                  disabled={savingParticipant || removingParticipant}
+                  className="inline-flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-bold text-destructive hover:bg-destructive/15 disabled:opacity-60"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {removingParticipant ? 'Removing...' : 'Remove Participant'}
+                </button>
+                <button
+                  type="button"
+                  onClick={closeParticipantModal}
+                  disabled={savingParticipant || removingParticipant}
+                  className="button-secondary text-xs"
+                >
+                  Cancel
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

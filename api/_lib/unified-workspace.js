@@ -15,6 +15,7 @@ import {
 import { buildTranscriptSegmentsFromText } from './v2-persistence.js';
 
 let schemaModePromise = null;
+const LEGACY_METADATA_MARKER = '[MOMENTUM_META]';
 
 export async function getUnifiedWorkspaceSnapshot(supabase, options = {}) {
   try {
@@ -173,6 +174,339 @@ export async function createTaskRecord(supabase, task) {
 
   if (error) {
     throw error;
+  }
+
+  return { ok: true, mode };
+}
+
+export async function updateMeetingRecord(supabase, meetingId, updates = {}) {
+  const mode = await detectSchemaMode(supabase);
+  const normalizedMeetingId = String(meetingId || '').trim();
+  const nextTitle = cleanNullable(updates?.title);
+
+  if (!normalizedMeetingId) {
+    throw new Error('meetingId is required.');
+  }
+
+  if (!nextTitle) {
+    throw new Error('title is required.');
+  }
+
+  if (mode === 'v2') {
+    const workspaceId = String(updates?.workspaceId || '').trim();
+    const meeting = await findScopedMeetingRow(supabase, normalizedMeetingId, workspaceId);
+    if (!meeting?.id) {
+      throw new Error('Momentum could not find this meeting in the current workspace.');
+    }
+
+    const { error } = await supabase
+      .from('meetings')
+      .update({
+        ai_title: nextTitle,
+        source_meeting_label: nextTitle,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', normalizedMeetingId);
+
+    if (error) {
+      throw error;
+    }
+
+    return { ok: true, mode };
+  }
+
+  const legacyTables = await getLegacyTableNames(supabase);
+  const { data: legacyMeeting, error: meetingError } = await supabase
+    .from(legacyTables.meetings)
+    .select('id, summary')
+    .eq('id', normalizedMeetingId)
+    .maybeSingle();
+
+  if (meetingError) {
+    throw meetingError;
+  }
+
+  if (!legacyMeeting?.id) {
+    throw new Error('Momentum could not find this legacy meeting record.');
+  }
+
+  const parsedSummary = parseLegacySummaryMetadata(legacyMeeting.summary);
+  const nextSummary = buildLegacySummaryWithMetadata(parsedSummary.visibleSummary, {
+    ...parsedSummary.metadata,
+    meetingLabel: nextTitle,
+  });
+
+  const { error } = await supabase
+    .from(legacyTables.meetings)
+    .update({
+      title: nextTitle,
+      summary: nextSummary,
+    })
+    .eq('id', normalizedMeetingId);
+
+  if (error) {
+    throw error;
+  }
+
+  return { ok: true, mode };
+}
+
+export async function deleteMeetingRecord(supabase, meetingId, options = {}) {
+  const mode = await detectSchemaMode(supabase);
+  const normalizedMeetingId = String(meetingId || '').trim();
+
+  if (!normalizedMeetingId) {
+    throw new Error('meetingId is required.');
+  }
+
+  if (mode === 'v2') {
+    const workspaceId = String(options?.workspaceId || '').trim();
+    const meeting = await findScopedMeetingRow(supabase, normalizedMeetingId, workspaceId);
+    if (!meeting?.id) {
+      throw new Error('Momentum could not find this meeting in the current workspace.');
+    }
+
+    const childDeletes = await Promise.all([
+      supabase.from('meeting_participants').delete().eq('meeting_id', normalizedMeetingId),
+      supabase.from('meeting_transcript_segments').delete().eq('meeting_id', normalizedMeetingId),
+      supabase.from('meeting_decisions').delete().eq('meeting_id', normalizedMeetingId),
+      supabase.from('meeting_tasks').delete().eq('meeting_id', normalizedMeetingId),
+      supabase.from('meeting_checklist_items').delete().eq('meeting_id', normalizedMeetingId),
+      supabase.from('meeting_risk_flags').delete().eq('meeting_id', normalizedMeetingId),
+      supabase.from('meeting_processing_events').delete().eq('meeting_id', normalizedMeetingId),
+    ]);
+
+    const childFailure = childDeletes.find((result) => result?.error);
+    if (childFailure?.error) {
+      throw childFailure.error;
+    }
+
+    const { error: meetingDeleteError } = await supabase
+      .from('meetings')
+      .delete()
+      .eq('id', normalizedMeetingId);
+
+    if (meetingDeleteError) {
+      throw meetingDeleteError;
+    }
+
+    return { ok: true, mode };
+  }
+
+  const legacyTables = await getLegacyTableNames(supabase);
+  const [legacyTaskDelete, legacyMeetingDelete] = await Promise.all([
+    supabase.from(legacyTables.tasks).delete().eq('meeting_id', normalizedMeetingId),
+    supabase.from(legacyTables.meetings).delete().eq('id', normalizedMeetingId),
+  ]);
+
+  if (legacyTaskDelete?.error) {
+    throw legacyTaskDelete.error;
+  }
+
+  if (legacyMeetingDelete?.error) {
+    throw legacyMeetingDelete.error;
+  }
+
+  return { ok: true, mode };
+}
+
+export async function updateMeetingParticipantRecord(supabase, meetingId, updates = {}) {
+  const mode = await detectSchemaMode(supabase);
+  const normalizedMeetingId = String(meetingId || '').trim();
+  const participantId = String(updates?.participantId || '').trim();
+  const currentName = cleanParticipantDisplayName(updates?.currentName);
+  const nextName = cleanParticipantDisplayName(updates?.displayName);
+  const shouldRemove = Boolean(updates?.removeParticipant || updates?.remove);
+
+  if (!normalizedMeetingId) {
+    throw new Error('meetingId is required.');
+  }
+
+  if (!shouldRemove && !nextName) {
+    throw new Error('displayName is required when renaming a participant.');
+  }
+
+  if (mode === 'v2') {
+    const workspaceId = String(updates?.workspaceId || '').trim();
+    const meeting = await findScopedMeetingRow(supabase, normalizedMeetingId, workspaceId);
+    if (!meeting?.id) {
+      throw new Error('Momentum could not find this meeting in the current workspace.');
+    }
+
+    const { data: participantRows, error: participantError } = await supabase
+      .from('meeting_participants')
+      .select('id, display_name')
+      .eq('meeting_id', normalizedMeetingId);
+
+    if (participantError) {
+      throw participantError;
+    }
+
+    const targetParticipant = (participantRows || []).find((row) => {
+      if (participantId && row.id === participantId) {
+        return true;
+      }
+
+      if (!participantId && currentName) {
+        return normalizePersonName(row.display_name) === normalizePersonName(currentName);
+      }
+
+      return false;
+    }) || null;
+
+    if (targetParticipant?.id) {
+      const previousName = cleanParticipantDisplayName(targetParticipant.display_name);
+
+      if (shouldRemove) {
+        const { error } = await supabase
+          .from('meeting_participants')
+          .delete()
+          .eq('id', targetParticipant.id)
+          .eq('meeting_id', normalizedMeetingId);
+
+        if (error) {
+          throw error;
+        }
+      } else {
+        const { error } = await supabase
+          .from('meeting_participants')
+          .update({
+            display_name: nextName,
+            matched_profile_id: null,
+            confidence: 0.72,
+          })
+          .eq('id', targetParticipant.id)
+          .eq('meeting_id', normalizedMeetingId);
+
+        if (error) {
+          throw error;
+        }
+      }
+
+      if (previousName) {
+        await reassignMeetingTaskOwnersV2(
+          supabase,
+          normalizedMeetingId,
+          previousName,
+          shouldRemove ? '' : nextName,
+          shouldRemove
+        );
+      }
+
+      return { ok: true, mode };
+    }
+
+    const { data: meetingRow, error: meetingRowError } = await supabase
+      .from('meetings')
+      .select('id, source_meeting_label, summary_paragraph, summary_markdown, summary')
+      .eq('id', normalizedMeetingId)
+      .maybeSingle();
+
+    if (meetingRowError) {
+      throw meetingRowError;
+    }
+
+    const inferredParticipantNames = dedupeParticipantNames([
+      ...(Array.isArray(participantRows) ? participantRows.map((row) => row.display_name) : []),
+      ...((extractRawMeetingMetadata(meetingRow || {}, [])?.participantNames) || []),
+      currentName,
+    ]);
+    const nextParticipantNames = applyParticipantNameMutation(inferredParticipantNames, {
+      currentName,
+      nextName,
+      remove: shouldRemove,
+    });
+
+    const { error: clearError } = await supabase
+      .from('meeting_participants')
+      .delete()
+      .eq('meeting_id', normalizedMeetingId);
+
+    if (clearError) {
+      throw clearError;
+    }
+
+    if (nextParticipantNames.length > 0) {
+      const { error: insertError } = await supabase
+        .from('meeting_participants')
+        .insert(
+          nextParticipantNames.map((name) => ({
+            meeting_id: normalizedMeetingId,
+            display_name: name,
+            matched_profile_id: null,
+            confidence: 0.7,
+          }))
+        );
+
+      if (insertError) {
+        throw insertError;
+      }
+    }
+
+    if (currentName) {
+      await reassignMeetingTaskOwnersV2(
+        supabase,
+        normalizedMeetingId,
+        currentName,
+        shouldRemove ? '' : nextName,
+        shouldRemove
+      );
+    }
+
+    return { ok: true, mode };
+  }
+
+  const legacyTables = await getLegacyTableNames(supabase);
+  const { data: legacyMeeting, error: legacyMeetingError } = await supabase
+    .from(legacyTables.meetings)
+    .select('id, summary')
+    .eq('id', normalizedMeetingId)
+    .maybeSingle();
+
+  if (legacyMeetingError) {
+    throw legacyMeetingError;
+  }
+
+  if (!legacyMeeting?.id) {
+    throw new Error('Momentum could not find this legacy meeting record.');
+  }
+
+  const parsedSummary = parseLegacySummaryMetadata(legacyMeeting.summary);
+  const existingNames = parsedSummary.metadata.participantNames?.length
+    ? parsedSummary.metadata.participantNames
+    : currentName
+      ? [currentName]
+      : [];
+  const nextParticipantNames = applyParticipantNameMutation(existingNames, {
+    currentName,
+    nextName,
+    remove: shouldRemove,
+  });
+  const nextSummary = buildLegacySummaryWithMetadata(parsedSummary.visibleSummary, {
+    ...parsedSummary.metadata,
+    participantNames: nextParticipantNames,
+  });
+
+  const { error: summaryUpdateError } = await supabase
+    .from(legacyTables.meetings)
+    .update({
+      summary: nextSummary,
+    })
+    .eq('id', normalizedMeetingId);
+
+  if (summaryUpdateError) {
+    throw summaryUpdateError;
+  }
+
+  if (currentName) {
+    await reassignMeetingTaskOwnersLegacy(
+      supabase,
+      legacyTables.tasks,
+      normalizedMeetingId,
+      currentName,
+      shouldRemove ? '' : nextName,
+      shouldRemove
+    );
   }
 
   return { ok: true, mode };
@@ -627,6 +961,240 @@ async function findV2TaskRow(supabase, taskId, workspaceId) {
     .maybeSingle();
 
   return data || null;
+}
+
+function dedupeParticipantNames(names = []) {
+  const unique = new Map();
+
+  (Array.isArray(names) ? names : []).forEach((name) => {
+    const cleaned = cleanParticipantDisplayName(name);
+    const key = normalizePersonName(cleaned);
+    if (!cleaned || !key || unique.has(key)) {
+      return;
+    }
+
+    unique.set(key, cleaned);
+  });
+
+  return Array.from(unique.values());
+}
+
+function applyParticipantNameMutation(names = [], options = {}) {
+  const currentName = cleanParticipantDisplayName(options?.currentName);
+  const nextName = cleanParticipantDisplayName(options?.nextName);
+  const remove = Boolean(options?.remove);
+  const currentKey = normalizePersonName(currentName);
+
+  let nextNames = dedupeParticipantNames(names);
+
+  if (remove) {
+    if (currentKey) {
+      nextNames = nextNames.filter((name) => normalizePersonName(name) !== currentKey);
+    }
+
+    return dedupeParticipantNames(nextNames);
+  }
+
+  if (!nextName) {
+    return dedupeParticipantNames(nextNames);
+  }
+
+  if (currentKey) {
+    let replaced = false;
+    nextNames = nextNames.map((name) => {
+      if (!replaced && normalizePersonName(name) === currentKey) {
+        replaced = true;
+        return nextName;
+      }
+
+      return name;
+    });
+
+    if (!replaced) {
+      nextNames.push(nextName);
+    }
+  } else {
+    nextNames.push(nextName);
+  }
+
+  return dedupeParticipantNames(nextNames);
+}
+
+function parseLegacySummaryMetadata(summary) {
+  const text = String(summary || '').trim();
+  const markerIndex = text.lastIndexOf(LEGACY_METADATA_MARKER);
+
+  if (markerIndex === -1) {
+    return {
+      visibleSummary: text,
+      metadata: {},
+    };
+  }
+
+  const visibleSummary = text.slice(0, markerIndex).trim();
+  const metadataText = text.slice(markerIndex + LEGACY_METADATA_MARKER.length).trim();
+
+  try {
+    const parsed = JSON.parse(metadataText);
+    return {
+      visibleSummary: visibleSummary || text,
+      metadata: {
+        ...parsed,
+        participantNames: dedupeParticipantNames(parsed?.participantNames || []),
+      },
+    };
+  } catch {
+    return {
+      visibleSummary: visibleSummary || text,
+      metadata: {},
+    };
+  }
+}
+
+function buildLegacySummaryWithMetadata(visibleSummary, metadata = {}) {
+  const summaryText = String(visibleSummary || '').trim();
+  const normalizedMetadata = {
+    ...metadata,
+    meetingLabel: cleanNullable(metadata?.meetingLabel),
+    meetingCode: cleanNullable(metadata?.meetingCode),
+    meetingUrl: cleanNullable(metadata?.meetingUrl),
+    sourcePlatform: cleanNullable(metadata?.sourcePlatform),
+    audioMode: cleanNullable(metadata?.audioMode),
+    audioError: cleanNullable(metadata?.audioError),
+    workspaceId: cleanNullable(metadata?.workspaceId),
+    userId: cleanNullable(metadata?.userId),
+    extensionVersion: cleanNullable(metadata?.extensionVersion),
+    participantNames: dedupeParticipantNames(metadata?.participantNames || []),
+  };
+
+  const hasMetadata = Object.entries(normalizedMetadata).some(([, value]) =>
+    Array.isArray(value) ? value.length > 0 : Boolean(value)
+  );
+
+  if (!hasMetadata) {
+    return summaryText;
+  }
+
+  return [summaryText, `${LEGACY_METADATA_MARKER} ${JSON.stringify(normalizedMetadata)}`]
+    .filter(Boolean)
+    .join('\n\n');
+}
+
+async function reassignMeetingTaskOwnersV2(
+  supabase,
+  meetingId,
+  previousName,
+  nextName,
+  clearOwner = false
+) {
+  const previousKey = normalizePersonName(previousName);
+  if (!previousKey) {
+    return;
+  }
+
+  const { data: taskRows, error: taskError } = await supabase
+    .from('meeting_tasks')
+    .select('id, owner_name')
+    .eq('meeting_id', meetingId);
+
+  if (taskError) {
+    throw taskError;
+  }
+
+  const targetRows = (taskRows || []).filter(
+    (row) => normalizePersonName(row.owner_name) === previousKey
+  );
+
+  if (!targetRows.length) {
+    return;
+  }
+
+  const payload = clearOwner
+    ? {
+        owner_name: null,
+        owner_profile_id: null,
+        needs_review: true,
+        updated_at: new Date().toISOString(),
+      }
+    : {
+        owner_name: cleanNullable(nextName),
+        owner_profile_id: null,
+        updated_at: new Date().toISOString(),
+      };
+
+  if (!clearOwner && !payload.owner_name) {
+    return;
+  }
+
+  const updates = await Promise.all(
+    targetRows.map((taskRow) =>
+      supabase
+        .from('meeting_tasks')
+        .update(payload)
+        .eq('id', taskRow.id)
+    )
+  );
+  const failure = updates.find((result) => result?.error);
+  if (failure?.error) {
+    throw failure.error;
+  }
+}
+
+async function reassignMeetingTaskOwnersLegacy(
+  supabase,
+  taskTable,
+  meetingId,
+  previousName,
+  nextName,
+  clearOwner = false
+) {
+  const previousKey = normalizePersonName(previousName);
+  if (!previousKey) {
+    return;
+  }
+
+  const { data: taskRows, error: taskError } = await supabase
+    .from(taskTable)
+    .select('id, assignee')
+    .eq('meeting_id', meetingId);
+
+  if (taskError) {
+    throw taskError;
+  }
+
+  const targetRows = (taskRows || []).filter(
+    (row) => normalizePersonName(row.assignee) === previousKey
+  );
+
+  if (!targetRows.length) {
+    return;
+  }
+
+  const payload = clearOwner
+    ? {
+        assignee: '',
+        status: 'needs-review',
+      }
+    : {
+        assignee: cleanNullable(nextName),
+      };
+
+  if (!clearOwner && !payload.assignee) {
+    return;
+  }
+
+  const updates = await Promise.all(
+    targetRows.map((taskRow) =>
+      supabase
+        .from(taskTable)
+        .update(payload)
+        .eq('id', taskRow.id)
+    )
+  );
+  const failure = updates.find((result) => result?.error);
+  if (failure?.error) {
+    throw failure.error;
+  }
 }
 
 function buildParticipantRosterEntry(row, directory) {

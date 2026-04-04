@@ -1,5 +1,5 @@
 import { useDeferredValue, useMemo, useState } from 'react';
-import { Plus, Search, Users, LayoutList } from 'lucide-react';
+import { Clock3, LayoutList, Plus, Search, User, Users } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useWorkspace } from '../components/workspace/useWorkspace';
@@ -313,11 +313,13 @@ export default function Tasks() {
                       </div>
                       
                       <div className="flex flex-wrap gap-2 mb-4">
-                        <span className="rounded-lg bg-secondary px-2.5 py-1 text-[10px] font-bold text-foreground shadow-sm truncate max-w-[120px]">
-                          👤 {task.owner || 'Unassigned'}
+                        <span className="inline-flex items-center gap-1.5 rounded-lg bg-secondary px-2.5 py-1 text-[10px] font-bold text-foreground shadow-sm truncate max-w-[160px]">
+                          <User className="h-3.5 w-3.5 text-muted-foreground" />
+                          {task.owner || 'Unassigned'}
                         </span>
-                        <span className="rounded-lg bg-secondary px-2.5 py-1 text-[10px] font-bold text-foreground shadow-sm">
-                          ⏳ {task.dueDate || 'No constraint'}
+                        <span className="inline-flex items-center gap-1.5 rounded-lg bg-secondary px-2.5 py-1 text-[10px] font-bold text-foreground shadow-sm">
+                          <Clock3 className="h-3.5 w-3.5 text-muted-foreground" />
+                          {task.dueDate || 'No constraint'}
                         </span>
                         {task.ownerProfileId && (
                           <span className="rounded-lg bg-primary/10 border border-primary/20 px-2.5 py-1 text-[10px] font-bold text-primary shadow-sm">

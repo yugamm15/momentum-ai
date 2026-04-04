@@ -324,6 +324,101 @@ export async function createWorkspaceTask(task) {
   return { ok: true, mode: 'live' };
 }
 
+export async function updateWorkspaceMeeting(meetingId, title) {
+  const normalizedMeetingId = String(meetingId || '').trim();
+  const normalizedTitle = String(title || '').trim();
+
+  if (!normalizedMeetingId) {
+    throw new Error('meetingId is required to update a meeting title.');
+  }
+
+  if (!normalizedTitle) {
+    throw new Error('Meeting title cannot be empty.');
+  }
+
+  const apiResult = await updateWorkspaceMeetingThroughApi(normalizedMeetingId, normalizedTitle);
+  if (apiResult) {
+    return apiResult;
+  }
+
+  if (!isSupabaseConfigured) {
+    throw new Error('Supabase is not configured, so meetings cannot be updated yet.');
+  }
+
+  const supabase = getSupabaseClient();
+  const { error } = await supabase
+    .from('meetings')
+    .update({
+      title: normalizedTitle,
+    })
+    .eq('id', normalizedMeetingId);
+
+  if (error) {
+    throw error;
+  }
+
+  return { ok: true, mode: 'live' };
+}
+
+export async function deleteWorkspaceMeeting(meetingId) {
+  const normalizedMeetingId = String(meetingId || '').trim();
+  if (!normalizedMeetingId) {
+    throw new Error('meetingId is required to delete a meeting.');
+  }
+
+  const apiResult = await deleteWorkspaceMeetingThroughApi(normalizedMeetingId);
+  if (apiResult) {
+    return apiResult;
+  }
+
+  if (!isSupabaseConfigured) {
+    throw new Error('Supabase is not configured, so meetings cannot be deleted yet.');
+  }
+
+  const supabase = getSupabaseClient();
+  const [{ error: taskError }, { error: meetingError }] = await Promise.all([
+    supabase.from('tasks').delete().eq('meeting_id', normalizedMeetingId),
+    supabase.from('meetings').delete().eq('id', normalizedMeetingId),
+  ]);
+
+  if (taskError) {
+    throw taskError;
+  }
+
+  if (meetingError) {
+    throw meetingError;
+  }
+
+  return { ok: true, mode: 'live' };
+}
+
+export async function updateWorkspaceParticipant({
+  meetingId,
+  participantId,
+  currentName,
+  displayName,
+  removeParticipant = false,
+}) {
+  const normalizedMeetingId = String(meetingId || '').trim();
+  if (!normalizedMeetingId) {
+    throw new Error('meetingId is required to update a participant.');
+  }
+
+  const apiResult = await updateWorkspaceParticipantThroughApi({
+    meetingId: normalizedMeetingId,
+    participantId,
+    currentName,
+    displayName,
+    removeParticipant,
+  });
+
+  if (!apiResult) {
+    throw new Error('Participant updates require API support in this environment.');
+  }
+
+  return apiResult;
+}
+
 export async function askMeetingQuestion(meeting, question) {
   const response = await apiFetch('/api/ask-meeting-question', {
     method: 'POST',
@@ -1141,6 +1236,81 @@ async function createWorkspaceTaskThroughApi(task) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(task),
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    return { ok: true, mode: 'api' };
+  } catch {
+    return null;
+  }
+}
+
+async function updateWorkspaceMeetingThroughApi(meetingId, title) {
+  try {
+    const response = await apiFetch('/api/meetings', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        meetingId,
+        title,
+      }),
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    return { ok: true, mode: 'api' };
+  } catch {
+    return null;
+  }
+}
+
+async function deleteWorkspaceMeetingThroughApi(meetingId) {
+  try {
+    const encodedMeetingId = encodeURIComponent(meetingId);
+    const response = await apiFetch(`/api/meetings?meetingId=${encodedMeetingId}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    return { ok: true, mode: 'api' };
+  } catch {
+    return null;
+  }
+}
+
+async function updateWorkspaceParticipantThroughApi({
+  meetingId,
+  participantId,
+  currentName,
+  displayName,
+  removeParticipant,
+}) {
+  try {
+    const response = await apiFetch('/api/meetings', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        meetingId,
+        participantId,
+        currentName,
+        displayName,
+        removeParticipant,
+      }),
     });
 
     if (!response.ok) {
