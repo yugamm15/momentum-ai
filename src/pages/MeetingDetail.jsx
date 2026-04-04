@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -43,6 +43,7 @@ const fadeUp = {
   hidden: { opacity: 0, y: 20 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] } }
 };
+const LONG_PRESS_MS = 600;
 
 export default function MeetingDetail() {
   const { meetingId } = useParams();
@@ -63,6 +64,7 @@ export default function MeetingDetail() {
   const [meetingTitleDraft, setMeetingTitleDraft] = useState('');
   const [savingMeetingTitle, setSavingMeetingTitle] = useState(false);
   const [deletingMeeting, setDeletingMeeting] = useState(false);
+  const [showMeetingActions, setShowMeetingActions] = useState(false);
   const [participantModal, setParticipantModal] = useState({
     open: false,
     participantId: '',
@@ -77,6 +79,7 @@ export default function MeetingDetail() {
   const [processingStored, setProcessingStored] = useState(false);
   const [surfaceError, setSurfaceError] = useState('');
   const [transcriptQuery, setTranscriptQuery] = useState('');
+  const meetingCardPressTimerRef = useRef(null);
 
   const meeting = useMemo(
     () => snapshot.meetings.find((item) => item.id === meetingId),
@@ -116,6 +119,7 @@ export default function MeetingDetail() {
   useEffect(() => {
     setMeetingTitleDraft(String(meeting?.aiTitle || '').trim());
     setEditingMeetingTitle(false);
+    setShowMeetingActions(false);
     setParticipantModal({
       open: false,
       participantId: '',
@@ -123,6 +127,15 @@ export default function MeetingDetail() {
       displayName: '',
     });
   }, [meeting?.aiTitle, meeting?.id]);
+
+  useEffect(() => {
+    return () => {
+      if (meetingCardPressTimerRef.current !== null) {
+        window.clearTimeout(meetingCardPressTimerRef.current);
+        meetingCardPressTimerRef.current = null;
+      }
+    };
+  }, []);
 
   if (!meeting) {
     return (
@@ -337,6 +350,36 @@ export default function MeetingDetail() {
     }
   }
 
+  function clearMeetingCardPressTimer() {
+    if (meetingCardPressTimerRef.current !== null) {
+      window.clearTimeout(meetingCardPressTimerRef.current);
+      meetingCardPressTimerRef.current = null;
+    }
+  }
+
+  function handleMeetingCardPressStart(event) {
+    if (editingMeetingTitle || showMeetingActions) {
+      return;
+    }
+
+    if (event.pointerType === 'mouse' && event.button !== 0) {
+      return;
+    }
+
+    if (event.target instanceof Element && event.target.closest('a,button,input,select,textarea')) {
+      return;
+    }
+
+    clearMeetingCardPressTimer();
+    meetingCardPressTimerRef.current = window.setTimeout(() => {
+      setShowMeetingActions(true);
+    }, LONG_PRESS_MS);
+  }
+
+  function handleMeetingCardPressEnd() {
+    clearMeetingCardPressTimer();
+  }
+
   return (
     <motion.div 
       initial="hidden"
@@ -352,10 +395,56 @@ export default function MeetingDetail() {
 
       {/* Hero Section */}
       <motion.section variants={fadeUp} className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
-        <div className="glass-panel p-8 md:p-10 relative overflow-hidden group">
+        <div
+          className="glass-panel p-8 md:p-10 relative overflow-hidden group"
+          onPointerDown={handleMeetingCardPressStart}
+          onPointerUp={handleMeetingCardPressEnd}
+          onPointerLeave={handleMeetingCardPressEnd}
+          onPointerCancel={handleMeetingCardPressEnd}
+        >
           <div className="absolute top-0 right-0 p-12 opacity-0 group-hover:opacity-[0.03] dark:group-hover:opacity-5 transition-opacity duration-1000 pointer-events-none text-foreground">
             <AudioLines className="w-64 h-64 scale-150 -rotate-12" />
           </div>
+          <AnimatePresence>
+            {showMeetingActions && (
+              <motion.div
+                initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 6, scale: 0.98 }}
+                className="absolute bottom-5 right-5 z-20 w-[min(18rem,90%)] rounded-2xl border border-border bg-card p-3 shadow-2xl"
+              >
+                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground mb-2 px-1">
+                  Meeting Actions
+                </div>
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowMeetingActions(false);
+                      setEditingMeetingTitle(true);
+                      setMeetingTitleDraft(String(meeting.aiTitle || '').trim());
+                    }}
+                    className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-background px-3 py-2 text-xs font-bold text-foreground hover:bg-secondary"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                    Rename Meeting
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowMeetingActions(false);
+                      handleDeleteMeeting();
+                    }}
+                    disabled={deletingMeeting}
+                    className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-bold text-destructive hover:bg-destructive/15 disabled:opacity-60"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    {deletingMeeting ? 'Deleting...' : 'Delete Meeting'}
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
           <div className="relative z-10 flex flex-col items-start h-full justify-between">
             <div>
               <Link to="/dashboard/meetings" className="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-primary hover:text-primary/80 transition-colors mb-6 bg-primary/10 px-3 py-1.5 rounded-full">
@@ -406,27 +495,15 @@ export default function MeetingDetail() {
             </div>
             
             <div className="flex flex-wrap gap-2 items-center">
-              <button
-                onClick={() => setEditingMeetingTitle(true)}
-                className="button-secondary text-xs"
-              >
-                <Pencil className="h-3.5 w-3.5" />
-                Rename Meeting
-              </button>
-              <button
-                onClick={handleDeleteMeeting}
-                disabled={deletingMeeting}
-                className="inline-flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-xs font-bold text-destructive hover:bg-destructive/15 disabled:opacity-60"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                {deletingMeeting ? 'Deleting...' : 'Delete Meeting'}
-              </button>
               <span className="rounded-lg bg-secondary px-3 py-1.5 text-xs font-bold text-foreground shadow-sm">{meeting.source}</span>
               <span className="rounded-lg bg-secondary px-3 py-1.5 text-xs font-bold text-foreground shadow-sm">{meeting.rawTitle}</span>
               <span className="rounded-lg bg-primary/10 text-primary border border-primary/20 px-3 py-1.5 text-xs font-bold shadow-sm">{meeting.participants.length || 0} People</span>
               <span className="rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 px-3 py-1.5 text-xs font-bold shadow-sm">{meeting.tasks.length} Tasks</span>
               <span className="rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 px-3 py-1.5 text-xs font-bold shadow-sm">
                 {meeting.audioUrl ? 'Audio Recording Attached' : 'Text Transcript Only'}
+              </span>
+              <span className="rounded-lg border border-dashed border-border bg-background px-3 py-1.5 text-[11px] font-semibold text-muted-foreground">
+                Press and hold this card for actions
               </span>
             </div>
           </div>
