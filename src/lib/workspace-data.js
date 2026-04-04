@@ -528,11 +528,18 @@ function buildDisplaySummaryParagraph({
 }) {
   const normalizedSummary = normalizeComparableText(summaryParagraph);
   const normalizedTranscript = normalizeComparableText(transcriptText);
+  const lowSignal = isLowSignalContext({
+    normalizedSummary,
+    transcriptText,
+    decisions,
+    tasks,
+  });
 
   if (
     normalizedSummary
     && !looksLikeTranscriptMirror(normalizedSummary, normalizedTranscript)
     && !isBoilerplateSummary(normalizedSummary)
+    && !lowSignal
   ) {
     return String(summaryParagraph || '').trim();
   }
@@ -562,13 +569,12 @@ function buildDisplaySummaryParagraph({
       : `The team aligned on execution priorities and captured ${tasks.length} follow-up action item${tasks.length === 1 ? '' : 's'}.`;
   }
 
-  const transcriptContext = extractTranscriptContext(transcriptText);
-  if (transcriptContext) {
-    if (participants.length > 1) {
-      return `${participants.slice(0, 2).join(' and ')} discussed ${transcriptContext}. No actionable tasks were confidently extracted yet.`;
-    }
-
-    return `The discussion focused on ${transcriptContext}. No actionable tasks were confidently extracted yet.`;
+  if (lowSignal) {
+    return buildLowSignalSummary({
+      meetingCode,
+      meetingLabel,
+      participants,
+    });
   }
 
   if (participants.length > 1) {
@@ -583,6 +589,37 @@ function buildDisplaySummaryParagraph({
   return 'Momentum captured this meeting and generated a concise executive summary from the available signal.';
 }
 
+function isLowSignalContext({ normalizedSummary, transcriptText, decisions = [], tasks = [] }) {
+  if ((Array.isArray(decisions) ? decisions : []).length > 0 || (Array.isArray(tasks) ? tasks : []).length > 0) {
+    return false;
+  }
+
+  if (isLowSignalSummaryText(normalizedSummary)) {
+    return true;
+  }
+
+  const words = String(transcriptText || '').toLowerCase().match(/[a-z0-9]+/g) || [];
+  const uniqueWords = new Set(words);
+  return words.length < 14 || uniqueWords.size < 8;
+}
+
+function isLowSignalSummaryText(normalizedSummary) {
+  const text = String(normalizedSummary || '');
+  if (!text) {
+    return false;
+  }
+
+  return [
+    'too little clear speech',
+    'weak transcript signal',
+    'limited detail',
+    'limited context',
+    'not enough speech',
+    'audio file',
+    'high confidence executive summary',
+  ].some((token) => text.includes(token));
+}
+
 function isBoilerplateSummary(normalizedSummary) {
   const templates = [
     'momentum captured this meeting and generated a concise executive summary from the available signal',
@@ -593,29 +630,39 @@ function isBoilerplateSummary(normalizedSummary) {
   return templates.some((template) => normalizedSummary === template);
 }
 
-function extractTranscriptContext(transcriptText) {
-  const sentence = String(transcriptText || '')
-    .replace(/\s+/g, ' ')
-    .split(/(?<=[.!?])\s+/)
-    .map((part) => part.trim())
-    .find((part) => part.split(' ').length >= 7);
+function normalizeMeetingCode(value) {
+  const match = String(value || '').toLowerCase().match(/[a-z]{3}-[a-z]{4}-[a-z]{3}/);
+  return match ? match[0] : '';
+}
 
-  if (!sentence) {
-    return '';
+function buildLowSignalTitle(meetingCode) {
+  const code = normalizeMeetingCode(meetingCode);
+  return code ? `Meeting ${code}` : 'Meeting';
+}
+
+function buildLowSignalSummary({ meetingCode = '', meetingLabel = '', participants = [] }) {
+  const code = normalizeMeetingCode(meetingCode);
+  const participantLead = participants.length > 1
+    ? `${participants[0]} and ${participants[1]}`
+    : participants[0] || '';
+
+  if (participantLead && code) {
+    return `${participantLead} joined ${code}. Audio was captured, but speech signal was too limited for a detailed summary.`;
   }
 
-  const trimmed = sentence.replace(/[.!?]+$/, '').trim();
-  if (!trimmed) {
-    return '';
+  if (participantLead) {
+    return `${participantLead} joined this meeting. Audio was captured, but speech signal was too limited for a detailed summary.`;
   }
 
-  const compact = trimmed
-    .split(' ')
-    .slice(0, 18)
-    .join(' ')
-    .trim();
+  if (code) {
+    return `Audio was captured for ${code}, but speech signal was too limited for a detailed summary.`;
+  }
 
-  return compact || '';
+  if (meetingLabel) {
+    return `Audio was captured for ${String(meetingLabel).trim()}, but speech signal was too limited for a detailed summary.`;
+  }
+
+  return 'Audio was captured for this meeting, but speech signal was too limited for a detailed summary.';
 }
 
 function isUsableMeetingTitle(value) {
@@ -630,6 +677,10 @@ function isUsableMeetingTitle(value) {
   }
 
   if (/^meeting\s+review\s+for\s+/i.test(normalized)) {
+    return false;
+  }
+
+  if (/^momentum\s+captured\s+the\s+audio\s+file/i.test(normalized)) {
     return false;
   }
 
@@ -694,6 +745,17 @@ function resolveMeetingTitle({
   participants = [],
   meetingCode = '',
 }) {
+  const lowSignal = isLowSignalContext({
+    normalizedSummary: normalizeComparableText(summaryParagraph),
+    transcriptText,
+    decisions,
+    tasks,
+  });
+
+  if (lowSignal) {
+    return buildLowSignalTitle(meetingCode);
+  }
+
   const existingTitle = pickFirstUsableLabel(...candidates);
   if (existingTitle) {
     return existingTitle;
@@ -712,11 +774,6 @@ function resolveMeetingTitle({
   const summaryTitle = toCompactTitle(summaryParagraph);
   if (summaryTitle) {
     return summaryTitle;
-  }
-
-  const transcriptTitle = toCompactTitle(transcriptText);
-  if (transcriptTitle) {
-    return transcriptTitle;
   }
 
   if (participants.length > 1) {

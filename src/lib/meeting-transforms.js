@@ -526,6 +526,10 @@ function isUsableMeetingTitle(value) {
     return false;
   }
 
+  if (/^momentum\s+captured\s+the\s+audio\s+file/i.test(normalized)) {
+    return false;
+  }
+
   const meetingCodeOnly = normalized.match(/\b[a-z]{3}-[a-z]{4}-[a-z]{3}\b/i);
   if (meetingCodeOnly && normalized.replace(meetingCodeOnly[0].toLowerCase(), '').trim().split(' ').length <= 2) {
     return false;
@@ -578,7 +582,17 @@ function pickFirstUsableLabel(...values) {
   return '';
 }
 
-function resolveLegacyMeetingTitle({ candidates = [], transcriptText, summaryParagraph, tasks = [] }) {
+function resolveLegacyMeetingTitle({ candidates = [], transcriptText, summaryParagraph, tasks = [], meetingCode = '' }) {
+  const lowSignal = isLowSignalContext({
+    normalizedSummary: normalizeComparableText(summaryParagraph),
+    transcriptText,
+    tasks,
+  });
+
+  if (lowSignal) {
+    return buildLowSignalTitle(meetingCode);
+  }
+
   const existing = pickFirstUsableLabel(...candidates);
   if (existing) {
     return existing;
@@ -594,11 +608,6 @@ function resolveLegacyMeetingTitle({ candidates = [], transcriptText, summaryPar
     return summaryTitle;
   }
 
-  const transcriptTitle = toCompactTitle(transcriptText);
-  if (transcriptTitle) {
-    return transcriptTitle;
-  }
-
   if (tasks.length > 0) {
     return 'Execution Planning Sync';
   }
@@ -606,14 +615,20 @@ function resolveLegacyMeetingTitle({ candidates = [], transcriptText, summaryPar
   return 'Meeting Summary';
 }
 
-function buildDisplaySummaryParagraph({ summaryParagraph, transcriptText, tasks = [] }) {
+function buildDisplaySummaryParagraph({ summaryParagraph, transcriptText, tasks = [], meetingCode = '' }) {
   const normalizedSummary = normalizeComparableText(summaryParagraph);
   const normalizedTranscript = normalizeComparableText(transcriptText);
+  const lowSignal = isLowSignalContext({
+    normalizedSummary,
+    transcriptText,
+    tasks,
+  });
 
   if (
     normalizedSummary
     && !looksLikeTranscriptMirror(normalizedSummary, normalizedTranscript)
     && !isBoilerplateSummary(normalizedSummary)
+    && !lowSignal
   ) {
     return summaryParagraph;
   }
@@ -630,9 +645,11 @@ function buildDisplaySummaryParagraph({ summaryParagraph, transcriptText, tasks 
       : `The team aligned on execution priorities and captured ${tasks.length} follow-up action item${tasks.length === 1 ? '' : 's'}.`;
   }
 
-  const transcriptContext = extractTranscriptContext(transcriptText);
-  if (transcriptContext) {
-    return `The discussion focused on ${transcriptContext}. No actionable tasks were confidently extracted yet.`;
+  if (lowSignal) {
+    const normalizedCode = normalizeMeetingCode(meetingCode);
+    return normalizedCode
+      ? `Audio was captured for ${normalizedCode}, but speech signal was too limited for a detailed summary.`
+      : 'Audio was captured for this meeting, but speech signal was too limited for a detailed summary.';
   }
 
   return 'Momentum captured this meeting and generated a concise executive summary from the available signal.';
@@ -647,27 +664,45 @@ function isBoilerplateSummary(normalizedSummary) {
   return templates.some((template) => normalizedSummary === template);
 }
 
-function extractTranscriptContext(transcriptText) {
-  const sentence = String(transcriptText || '')
-    .replace(/\s+/g, ' ')
-    .split(/(?<=[.!?])\s+/)
-    .map((part) => part.trim())
-    .find((part) => part.split(' ').length >= 7);
-
-  if (!sentence) {
-    return '';
+function isLowSignalContext({ normalizedSummary, transcriptText, tasks = [] }) {
+  if ((Array.isArray(tasks) ? tasks : []).length > 0) {
+    return false;
   }
 
-  const trimmed = sentence.replace(/[.!?]+$/, '').trim();
-  if (!trimmed) {
-    return '';
+  if (isLowSignalSummaryText(normalizedSummary)) {
+    return true;
   }
 
-  return trimmed
-    .split(' ')
-    .slice(0, 18)
-    .join(' ')
-    .trim();
+  const words = String(transcriptText || '').toLowerCase().match(/[a-z0-9]+/g) || [];
+  const uniqueWords = new Set(words);
+  return words.length < 14 || uniqueWords.size < 8;
+}
+
+function isLowSignalSummaryText(normalizedSummary) {
+  const text = String(normalizedSummary || '');
+  if (!text) {
+    return false;
+  }
+
+  return [
+    'too little clear speech',
+    'weak transcript signal',
+    'limited detail',
+    'limited context',
+    'not enough speech',
+    'audio file',
+    'high confidence executive summary',
+  ].some((token) => text.includes(token));
+}
+
+function normalizeMeetingCode(value) {
+  const match = String(value || '').toLowerCase().match(/[a-z]{3}-[a-z]{4}-[a-z]{3}/);
+  return match ? match[0] : '';
+}
+
+function buildLowSignalTitle(meetingCode = '') {
+  const normalizedCode = normalizeMeetingCode(meetingCode);
+  return normalizedCode ? `Meeting ${normalizedCode}` : 'Meeting';
 }
 
 function firstValidDateValue(...values) {
@@ -727,11 +762,13 @@ export function transformLegacyMeeting(meeting, legacyTasks = []) {
     transcriptText,
     summaryParagraph: rawSummaryParagraph,
     tasks,
+    meetingCode: metadata.meetingCode,
   });
   const summaryParagraph = buildDisplaySummaryParagraph({
     summaryParagraph: rawSummaryParagraph,
     transcriptText,
     tasks,
+    meetingCode: metadata.meetingCode,
   });
   const scores = deriveLegacyScores({
     meeting,

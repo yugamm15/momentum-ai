@@ -373,7 +373,7 @@ export function buildFallbackAnalysis(transcript, sourceMetadata = {}) {
 
   return normalizeAnalysis(
     {
-      title: buildFallbackTitle(sentences, sourceMetadata),
+      title: buildFallbackTitle(sentences, sourceMetadata, transcriptLooksLowSignal),
       summary_paragraph: summaryParagraph,
       summary_bullets: summaryBullets,
       decisions: buildFallbackDecisions(summarySentences),
@@ -764,7 +764,12 @@ function normalizeRiskFlags(riskFlags, tasks, transcript, ownerResolutionRisks =
   ]).slice(0, 10);
 }
 
-function buildFallbackTitle(sentences, sourceMetadata = {}) {
+function buildFallbackTitle(sentences, sourceMetadata = {}, transcriptLooksLowSignal = false) {
+  const sanitizedCode = sanitizeMeetingCode(sourceMetadata?.meetingCode);
+  if (transcriptLooksLowSignal) {
+    return sanitizedCode ? `Meeting ${sanitizedCode}` : 'Meeting';
+  }
+
   const participantNames = dedupeNames(sourceMetadata?.participantNames || []);
   if (participantNames.length > 1) {
     return `Team Sync: ${participantNames.slice(0, 2).join(' & ')}`;
@@ -779,7 +784,6 @@ function buildFallbackTitle(sentences, sourceMetadata = {}) {
     return meetingLabel;
   }
 
-  const sanitizedCode = sanitizeMeetingCode(sourceMetadata?.meetingCode);
   if (sanitizedCode) {
     return `Google Meet Check-in (${sanitizedCode.toUpperCase()})`;
   }
@@ -800,13 +804,22 @@ function buildFallbackSummary(summarySentences, taskCount, transcriptLooksLowSig
   const participantLead = participantNames.length > 1
     ? `${participantNames[0]} and ${participantNames[1]}`
     : participantNames[0] || '';
+  const meetingCode = sanitizeMeetingCode(sourceMetadata?.meetingCode);
 
   if (transcriptLooksLowSignal) {
-    if (participantLead) {
-      return `${participantLead} had a brief check-in. Momentum captured the audio file, but transcript signal was too limited for a high-confidence executive summary.`;
+    if (participantLead && meetingCode) {
+      return `${participantLead} joined meeting ${meetingCode}. Audio was captured, but speech signal was too limited for a detailed summary.`;
     }
 
-    return 'Momentum captured the audio file, but transcript signal was too limited for a high-confidence executive summary.';
+    if (participantLead) {
+      return `${participantLead} had a brief check-in. Audio was captured, but speech signal was too limited for a detailed summary.`;
+    }
+
+    if (meetingCode) {
+      return `Audio was captured for meeting ${meetingCode}, but speech signal was too limited for a detailed summary.`;
+    }
+
+    return 'Audio was captured for this meeting, but speech signal was too limited for a detailed summary.';
   }
 
   const summary = summarySentences.join(' ').trim();
