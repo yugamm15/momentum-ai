@@ -48,7 +48,7 @@ export default function MeetingProcessor({ onComplete }) {
         payload?.detail ||
           (payload?.analysisComplete
             ? 'Transcript, summary, and tasks are ready.'
-            : 'Raw audio was stored. Finish AI analysis later from the Meeting Library.')
+            : 'Raw audio was stored. Finish analysis later from the Meeting Library.')
       );
 
       if (onComplete) {

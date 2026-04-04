@@ -1,80 +1,81 @@
 import {
+  AlertTriangle,
   ArrowRight,
-  AudioLines,
+  CalendarClock,
   CheckCircle2,
   ChevronRight,
-  Command,
-  Database,
-  Layers3,
-  Mic,
-  PlayCircle,
+  Search,
+  ShieldCheck,
   Sparkles,
-  Target,
-  Waves,
-  Workflow
+  Workflow,
 } from 'lucide-react';
 import { AnimatePresence, motion, useScroll, useTransform } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import MomentumLogo from '../components/MomentumLogo';
 
-const fadeIn = {
-  hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1] } }
-};
-
-const staggerContainer = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: { staggerChildren: 0.1, delayChildren: 0.2 }
-  }
-};
-
-const featureCards = [
+const memoryEvents = [
   {
-    title: 'Smart Audio Processing',
-    body: 'Moméntum securely captures and processes your calls and turns them into tasks.',
-    icon: AudioLines,
+    label: 'Resurfaced commitment',
+    title: 'Pricing deck came back again',
+    detail: 'It was left open in the last staff sync and surfaced again this week.',
   },
   {
-    title: 'Automatic Assignments',
-    body: 'Assigns tasks securely and easily to people from your workspace automatically.',
-    icon: Target,
+    label: 'Owner changed',
+    title: 'Vendor outreach moved from Arjun to Neha',
+    detail: 'Momentum keeps the change visible instead of letting it disappear in notes.',
   },
   {
-    title: 'Reliable Information Ledger',
-    body: 'Keep an accurate history of your calls and tasks over time easily.',
-    icon: CheckCircle2,
+    label: 'Timeline shifted',
+    title: 'Launch review moved from Friday to next Tuesday',
+    detail: 'The record shows exactly when the deadline changed and what replaced it.',
   },
   {
-    title: 'Live Workspace Design',
-    body: 'Built for teams solving real problems in real time with high reliability.',
-    icon: Layers3,
+    label: 'Needs proof',
+    title: 'Decision still unclear',
+    detail: 'The transcript does not support a strong decision yet, so it stays in review.',
   },
 ];
 
-const processSteps = [
+const proofRows = [
   {
-    title: "Simple Recording",
-    desc: "Simply start capturing your Google Meets with the extension.",
-    icon: Mic
+    eyebrow: 'What was promised',
+    title: 'Carry commitments forward instead of starting from zero every time.',
+    body: 'Momentum pulls the last related meeting into the next one so repeating work is obvious the second it resurfaces.',
   },
   {
-    title: "Information Processing",
-    desc: "Your data is converted into actionable items immediately.",
-    icon: Database
+    eyebrow: 'What changed',
+    title: 'Owner shifts and deadline movement become first-class signals.',
+    body: 'The product highlights when a commitment changed hands or moved in time, so teams can see drift before it becomes delay.',
   },
   {
-    title: "People Match",
-    desc: "Automatically map recorded speakers to members within your team.",
-    icon: Workflow
+    eyebrow: 'What still lacks proof',
+    title: 'Answers come with transcript evidence or they stay cautious.',
+    body: 'Search the record, inspect the exact wording, and keep weak signals visible until a human resolves them.',
+  },
+];
+
+const workflow = [
+  {
+    title: 'Capture the meeting',
+    body: 'Audio or transcript lands in the workspace as a real record, not an ephemeral chat artifact.',
+    icon: Workflow,
   },
   {
-    title: "Dashboard Management",
-    desc: "Review your tasks with full playback and editing on a beautiful web interface.",
-    icon: Command
-  }
+    title: 'Extract follow-ups with evidence',
+    body: 'Tasks, decisions, and risk flags stay grounded in transcript snippets and source audio.',
+    icon: Search,
+  },
+  {
+    title: 'Review ambiguity fast',
+    body: 'Missing owner, vague wording, and low-confidence passages stay in one focused review lane.',
+    icon: AlertTriangle,
+  },
+  {
+    title: 'Walk into the next meeting prepared',
+    body: 'Momentum shows what resurfaced, what changed, and what still needs a decision before the room moves on.',
+    icon: CalendarClock,
+  },
 ];
 
 export default function Landing({ session }) {
@@ -82,11 +83,11 @@ export default function Landing({ session }) {
   const containerRef = useRef(null);
   const { scrollYProgress } = useScroll({
     target: containerRef,
-    offset: ["start start", "end start"]
+    offset: ['start start', 'end start'],
   });
 
-  const heroY = useTransform(scrollYProgress, [0, 1], ["0%", "50%"]);
-  const heroOpacity = useTransform(scrollYProgress, [0, 0.5], [1, 0]);
+  const heroY = useTransform(scrollYProgress, [0, 1], ['0%', '18%']);
+  const heroOpacity = useTransform(scrollYProgress, [0, 0.4], [1, 0.92]);
 
   useEffect(() => {
     const hideTimer = window.setTimeout(() => {
@@ -97,32 +98,31 @@ export default function Landing({ session }) {
   }, []);
 
   return (
-    <div className="relative min-h-screen bg-background text-foreground transition-colors duration-500" ref={containerRef}>
-      {/* Dynamic Background */}
-      <div className="fixed inset-0 z-0 pointer-events-none">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-primary/10 via-transparent to-transparent opacity-60 dark:opacity-100" />
-        <div className="absolute inset-0 cinematic-grid opacity-10 dark:opacity-30" />
+    <div ref={containerRef} className="relative min-h-screen bg-background text-foreground">
+      <div className="pointer-events-none fixed inset-0 z-0">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(13,110,253,0.12),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(245,158,11,0.1),transparent_28%),radial-gradient(circle_at_50%_24%,rgba(255,255,255,0.7),transparent_52%)]" />
+        <div className="absolute inset-0 cinematic-grid opacity-[0.035]" />
         <motion.div
-          animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.5, 0.3] }}
-          transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute -top-[20%] -left-[10%] w-[50%] h-[50%] bg-blue-500/10 blur-[120px] rounded-full"
+          animate={{ x: [0, 24, -10, 0], y: [0, -18, 12, 0], scale: [1, 1.06, 0.98, 1] }}
+          transition={{ duration: 18, repeat: Infinity, ease: 'easeInOut' }}
+          className="absolute -left-20 top-24 h-72 w-72 rounded-full bg-primary/10 blur-[90px]"
         />
         <motion.div
-          animate={{ scale: [1, 1.5, 1], opacity: [0.2, 0.4, 0.2] }}
-          transition={{ duration: 20, repeat: Infinity, ease: "easeInOut", delay: 5 }}
-          className="absolute top-[30%] -right-[10%] w-[40%] h-[40%] bg-primary/10 blur-[120px] rounded-full"
+          animate={{ x: [0, -32, 14, 0], y: [0, 20, -14, 0], scale: [1, 0.96, 1.08, 1] }}
+          transition={{ duration: 20, repeat: Infinity, ease: 'easeInOut', delay: 2.5 }}
+          className="absolute bottom-16 right-0 h-80 w-80 rounded-full bg-amber-400/10 blur-[100px]"
         />
       </div>
 
       <AnimatePresence>
-        {showIntro && (
+        {showIntro ? (
           <motion.div
             initial={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.45, ease: 'easeOut' }}
             className="fixed inset-0 z-[70] flex items-center justify-center bg-background/88 backdrop-blur-md"
           >
-            <div className="relative w-[min(88vw,760px)] h-[180px]">
+            <div className="relative h-[180px] w-[min(88vw,760px)]">
               <motion.div
                 initial={{ opacity: 0, scale: 0.85 }}
                 animate={{ opacity: [0, 0.35, 0], scale: [0.85, 1.05, 1.2] }}
@@ -148,258 +148,231 @@ export default function Landing({ session }) {
                 initial={{ left: '6%', opacity: 0 }}
                 animate={{ left: '94%', opacity: [0, 1, 1, 0] }}
                 transition={{ duration: 1.25, ease: 'easeInOut', delay: 0.5 }}
-                className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 h-3 w-3 rounded-full bg-primary shadow-[0_0_20px_rgba(0,102,255,0.8)]"
+                className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 h-3 w-3 rounded-full bg-primary shadow-[0_0_20px_rgba(0,102,255,0.8)]"
               />
-
             </div>
           </motion.div>
-        )}
+        ) : null}
       </AnimatePresence>
 
-      {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border bg-card/40 backdrop-blur-2xl">
-        <div className="mx-auto max-w-7xl px-6 h-20 flex items-center justify-between">
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.8, ease: "easeOut" }}
-            className="flex items-center gap-2"
-          >
-            <MomentumLogo className="w-8 h-8" />
-            <span className="font-bold tracking-tight text-lg text-foreground">Moméntum-AI</span>
-          </motion.div>
+      <nav className="fixed left-0 right-0 top-0 z-40 bg-background/72 backdrop-blur-2xl">
+        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-6">
+          <Link to="/" className="flex items-center gap-3">
+            <MomentumLogo className="h-8 w-8" />
+            <div>
+              <div className="text-sm font-black uppercase tracking-[0.24em] text-foreground">Momentum</div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                Accountability Memory
+              </div>
+            </div>
+          </Link>
 
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.8, ease: "easeOut" }}
-            className="flex items-center gap-4"
-          >
-            <Link to="/login" className="text-sm font-bold text-muted-foreground hover:text-foreground transition-colors duration-200">
-              Access Request
+          <div className="flex items-center gap-4">
+            <a href="#proof" className="hidden text-sm font-semibold text-muted-foreground transition hover:text-foreground md:inline-flex">
+              Why it is different
+            </a>
+            <Link to={session ? '/dashboard' : '/login'} className="button-primary px-6 py-2.5 text-sm">
+              {session ? 'Open workspace' : 'Get access'}
             </Link>
-            <Link to={session ? '/dashboard' : '/login'} className="button-primary group flex items-center gap-2 py-2.5 px-6 shadow-md shadow-primary/20">
-              <span>{session ? 'Workspace' : 'Get Magic Link'}</span>
-              <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-            </Link>
-          </motion.div>
+          </div>
         </div>
+        <div className="mx-auto h-px max-w-7xl bg-gradient-to-r from-transparent via-foreground/8 to-transparent" />
       </nav>
 
-      <main className="relative z-10 pt-20 pb-20 px-6 overflow-hidden">
-        {/* Hero Section */}
+      <main className="relative z-10 pt-20">
         <motion.section
           style={{ y: heroY, opacity: heroOpacity }}
-          className="mx-auto max-w-7xl pt-6 pb-32 text-center"
+          className="relative overflow-hidden px-6 pb-24 pt-8 lg:px-10 xl:px-16"
         >
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
-            className="inline-flex items-center gap-2 rounded-full border border-border bg-card/50 px-4 py-1.5 backdrop-blur-md mb-8 shadow-sm"
-          >
-            <Sparkles className="h-4 w-4 text-primary" />
-            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-foreground">Meeting Intelligence</span>
-          </motion.div>
-
-          <motion.h1
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1], delay: 0.1 }}
-            className="mx-auto max-w-5xl text-5xl sm:text-6xl md:text-8xl font-extrabold tracking-tighter text-foreground"
-          >
-            Meeting Tasks.<br />
-            <span className="text-gradient">Done completely automatically.</span>
-          </motion.h1>
-
-          <motion.p
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1], delay: 0.2 }}
-            className="mx-auto mt-8 max-w-2xl text-lg sm:text-xl leading-relaxed text-muted-foreground font-medium"
-          >
-            Moméntum captures your meetings and turns them into actual actionable tasks automatically, keeping your workflow quick and organized.
-          </motion.p>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1], delay: 0.3 }}
-            className="mt-12 flex flex-col sm:flex-row items-center justify-center gap-4"
-          >
-            <Link to={session ? '/dashboard' : '/login'} className="button-primary w-full sm:w-auto h-14 text-base px-10 flex justify-center items-center shadow-lg shadow-primary/20">
-              {session ? 'Open Dashboard' : 'Get Started'}
-            </Link>
-            <Link to="/dashboard" className="button-secondary w-full sm:w-auto h-14 text-base px-10 flex justify-center items-center gap-2 group">
-              <PlayCircle className="h-5 w-5 text-muted-foreground group-hover:text-foreground transition-colors" />
-              <span>Learn More</span>
-            </Link>
-          </motion.div>
-        </motion.section>
-
-        {/* Cinematic Bento Layout */}
-        <motion.section
-          variants={staggerContainer}
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: "-100px" }}
-          className="mx-auto max-w-7xl grid grid-cols-1 md:grid-cols-12 gap-6 mt-16"
-        >
-          {/* Main Visualizer Panel */}
-          <motion.div variants={fadeIn} className="md:col-span-8 glass-panel p-8 sm:p-12 min-h-[500px] flex flex-col justify-between group overflow-hidden relative">
-            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
-
-            <div className="relative z-10">
-              <div className="inline-flex items-center gap-2 rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 mb-6">
-                <Waves className="h-3 w-3 text-blue-500" />
-                <span className="text-[10px] font-bold uppercase tracking-widest text-blue-500">Fast AI Processing</span>
+          <div className="mx-auto max-w-7xl">
+            <div className="mx-auto max-w-4xl text-center">
+              <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card/70 px-4 py-1.5 text-[10px] font-bold uppercase tracking-[0.24em] text-foreground shadow-sm">
+                <Sparkles className="h-3.5 w-3.5 text-primary" />
+                The accountability memory for recurring meetings
               </div>
-              <h2 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-foreground mb-4">
-                How it works.
-              </h2>
-              <p className="text-muted-foreground text-lg leading-relaxed max-w-md font-medium">
-                Turning unstructured conversations into a robust framework of action items.
+
+              <h1 className="mt-8 text-5xl font-black tracking-[-0.06em] text-foreground sm:text-6xl md:text-7xl">
+                Keep the commitments your meetings keep losing.
+              </h1>
+
+              <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-muted-foreground">
+                Momentum does not stop at summary. It shows what was promised, what changed since the last related
+                meeting, and what still lacks enough proof to trust.
               </p>
+
+              <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
+                <Link to={session ? '/dashboard' : '/login'} className="button-primary h-14 px-8 text-base">
+                  {session ? 'Enter the workspace' : 'Get the workspace'}
+                </Link>
+                <a href="#proof" className="button-secondary h-14 px-8 text-base group">
+                  See the proof flow
+                  <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                </a>
+              </div>
             </div>
 
-            <div className="relative z-10 mt-12 grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {processSteps.map((step, idx) => (
-                <div key={idx} className="flex items-start gap-4 p-5 rounded-2xl bg-secondary/50 border border-transparent hover:border-border hover:bg-card transition-colors shadow-sm">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] bg-background border border-border text-foreground shadow-sm">
-                    <step.icon className="h-5 w-5" />
+            <div className="mt-16 grid gap-6 lg:grid-cols-[1.12fr_0.88fr]">
+              <div className="relative overflow-hidden rounded-[40px] bg-[linear-gradient(145deg,rgba(255,255,255,0.78),rgba(255,255,255,0.38))] p-7 shadow-[0_24px_80px_rgba(15,23,42,0.06)] backdrop-blur-xl lg:p-8">
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_20%,rgba(13,110,253,0.1),transparent_24%),radial-gradient(circle_at_84%_82%,rgba(245,158,11,0.08),transparent_22%)]" />
+                <div className="relative">
+                  <div className="max-w-md">
+                    <div className="text-[10px] font-black uppercase tracking-[0.26em] text-primary">Live memory rail</div>
+                    <h2 className="mt-3 text-3xl font-black tracking-tight text-foreground">
+                      The second meeting should know what the first one already promised.
+                    </h2>
                   </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-foreground">{step.title}</h3>
-                    <p className="text-xs text-muted-foreground mt-1 leading-relaxed font-medium">{step.desc}</p>
+
+                  <div className="mt-8 grid gap-4">
+                    {memoryEvents.map((event, index) => (
+                      <motion.div
+                        key={event.title}
+                        initial={{ opacity: 0, y: 24 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.6, delay: 0.12 * index, ease: [0.22, 1, 0.36, 1] }}
+                        className={`rounded-[28px] bg-white/88 px-5 py-5 shadow-sm ${index === 1 ? 'ml-8' : ''} ${index === 2 ? 'mr-6' : ''}`}
+                      >
+                        <div className="mb-3 inline-flex rounded-full bg-secondary px-3 py-1 text-[10px] font-bold uppercase tracking-[0.24em] text-muted-foreground">
+                          {event.label}
+                        </div>
+                        <div className="text-xl font-black tracking-tight text-foreground">{event.title}</div>
+                        <p className="mt-2 max-w-lg text-sm leading-6 text-muted-foreground">{event.detail}</p>
+                      </motion.div>
+                    ))}
                   </div>
                 </div>
-              ))}
-            </div>
-          </motion.div>
+              </div>
 
-          {/* Stats / Context Panel */}
-          <motion.div variants={fadeIn} className="md:col-span-4 vibrant-panel p-8 sm:p-12 flex flex-col justify-between relative overflow-hidden group">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.2)_0%,transparent_60%)]" />
+              <div className="grid gap-4">
+                {[
+                  'Every follow-up stays tied to source wording.',
+                  'Recurring meetings gain a visible memory layer.',
+                  'Weak evidence stays in review instead of pretending certainty.',
+                ].map((line) => (
+                  <div key={line} className="rounded-[32px] bg-card/72 px-5 py-5 shadow-sm backdrop-blur-md">
+                    <div className="flex items-start gap-3 text-sm leading-6 text-foreground">
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                      <span>{line}</span>
+                    </div>
+                  </div>
+                ))}
 
-            <div className="relative z-10 space-y-12">
-              {[
-                { label: 'Data Quality', value: '100%', desc: 'Safe storage binding.' },
-                { label: 'Processing Speed', value: '< 2.4s', desc: 'Real-time task fetching.' },
-                { label: 'AI Risk', value: 'Zero', desc: 'No unverified actions.' },
-              ].map((stat, idx) => (
-                <div key={idx} className="group/stat">
-                  <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/50 mb-2 group-hover/stat:text-white/80 transition-colors">
-                    {stat.label}
-                  </div>
-                  <div className="text-4xl sm:text-5xl font-extrabold tracking-tighter text-white mb-2">
-                    {stat.value}
-                  </div>
-                  <div className="text-xs font-semibold text-white/60">
-                    {stat.desc}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-
-          {/* Feature Grid */}
-          {featureCards.map((card, idx) => {
-            const Icon = card.icon;
-            return (
-              <motion.div key={idx} variants={fadeIn} className="md:col-span-6 glass-panel p-8 sm:p-10 group relative transition-all duration-500 hover:-translate-y-1">
-                <div className="absolute inset-0 bg-gradient-to-b from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                <div className="relative z-10">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-[16px] bg-secondary border border-border text-foreground shadow-sm mb-6 transition-transform duration-500 group-hover:scale-110 group-hover:bg-card">
-                    <Icon className="h-6 w-6" />
-                  </div>
-                  <h3 className="text-2xl font-bold tracking-tight text-foreground mb-4">
-                    {card.title}
-                  </h3>
-                  <p className="text-muted-foreground font-medium leading-relaxed">
-                    {card.body}
+                <div className="rounded-[32px] bg-[linear-gradient(135deg,rgba(13,110,253,0.96),rgba(37,99,235,0.86))] px-6 py-7 text-white shadow-[0_24px_70px_rgba(13,110,253,0.2)]">
+                  <div className="text-[10px] font-bold uppercase tracking-[0.24em] text-white/70">What actually matters</div>
+                  <p className="mt-3 text-lg font-semibold leading-8">
+                    Show what changed, show the proof, and make the next meeting start from the right place.
                   </p>
                 </div>
-              </motion.div>
-            );
-          })}
+              </div>
+            </div>
+          </div>
         </motion.section>
 
-        {/* Global CTA */}
-        <motion.section
-          initial={{ opacity: 0, y: 40 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-100px" }}
-          transition={{ duration: 1 }}
-          className="mx-auto max-w-5xl mt-32 mb-20 text-center relative"
-        >
-          <div className="absolute inset-0 flex items-center justify-center opacity-20 pointer-events-none">
-            <div className="w-full h-[1px] bg-gradient-to-r from-transparent via-foreground to-transparent" />
-          </div>
+        <section id="proof" className="px-6 py-20 lg:px-10 xl:px-16">
+          <div className="mx-auto max-w-7xl">
+            <div className="max-w-2xl">
+              <div className="text-[10px] font-black uppercase tracking-[0.26em] text-primary">Why it is different</div>
+              <h2 className="mt-4 text-4xl font-black tracking-tight text-foreground sm:text-5xl">
+                The product is only valuable if it can prove what changed.
+              </h2>
+            </div>
 
-          <div className="relative z-10 py-16">
-            <h2 className="text-4xl sm:text-6xl font-extrabold tracking-tighter text-foreground mb-6">
-              Establish Moméntum.
+            <div className="mt-12 grid gap-5 lg:grid-cols-3">
+              {proofRows.map((row, index) => (
+                <motion.div
+                  key={row.title}
+                  initial={{ opacity: 0, y: 24 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true, margin: '-100px' }}
+                  transition={{ duration: 0.6, delay: index * 0.06 }}
+                  className="rounded-[34px] bg-card/72 px-6 py-7 shadow-[0_20px_60px_rgba(15,23,42,0.05)] backdrop-blur-md"
+                >
+                  <div className="text-[11px] font-bold uppercase tracking-[0.24em] text-primary">
+                    {row.eyebrow}
+                  </div>
+                  <div>
+                    <h3 className="mt-3 text-2xl font-black tracking-tight text-foreground">{row.title}</h3>
+                    <p className="mt-3 max-w-2xl text-base leading-8 text-muted-foreground">{row.body}</p>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="px-6 py-16 lg:px-10 xl:px-16">
+          <div className="mx-auto max-w-7xl rounded-[42px] bg-[linear-gradient(145deg,rgba(255,255,255,0.78),rgba(255,255,255,0.38))] px-7 py-8 shadow-[0_28px_90px_rgba(15,23,42,0.07)] backdrop-blur-xl lg:px-10 lg:py-10">
+            <div className="max-w-2xl">
+              <div className="text-[10px] font-black uppercase tracking-[0.26em] text-primary">Operating model</div>
+              <h2 className="mt-4 text-4xl font-black tracking-tight text-foreground sm:text-5xl">
+                Proof, review, memory, then the next meeting brief.
+              </h2>
+            </div>
+
+            <div className="mt-10 grid gap-4 lg:grid-cols-4">
+              {workflow.map((step, index) => (
+                <motion.div
+                  key={step.title}
+                  initial={{ opacity: 0, y: 24 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true, margin: '-100px' }}
+                  transition={{ duration: 0.55, delay: index * 0.08 }}
+                  className="rounded-[30px] bg-background/78 px-5 py-6 shadow-sm"
+                >
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-card text-foreground shadow-sm">
+                    <step.icon className="h-5 w-5" />
+                  </div>
+                  <div className="mt-5 text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Step {index + 1}</div>
+                  <h3 className="mt-3 text-xl font-black tracking-tight text-foreground">{step.title}</h3>
+                  <p className="mt-3 text-sm leading-7 text-muted-foreground">{step.body}</p>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="px-6 pb-24 pt-16 lg:px-10 xl:px-16">
+          <div className="mx-auto max-w-6xl rounded-[42px] bg-[linear-gradient(135deg,rgba(13,110,253,0.95),rgba(37,99,235,0.84))] px-8 py-14 text-center text-white shadow-[0_35px_110px_rgba(13,110,253,0.28)]">
+            <div className="inline-flex items-center gap-2 rounded-full bg-white/12 px-4 py-2 text-[10px] font-bold uppercase tracking-[0.24em] text-white/90">
+              <ShieldCheck className="h-3.5 w-3.5" />
+              Built for teams that run recurring meetings
+            </div>
+            <h2 className="mx-auto mt-8 max-w-3xl text-4xl font-black tracking-tight sm:text-6xl">
+              Stop losing the thread between one meeting and the next.
             </h2>
-            <p className="text-lg text-muted-foreground font-medium mb-10 max-w-xl mx-auto">
-              Stop taking manual notes and start being productive. Let the system do the work.
+            <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-white/78">
+              Let the workspace keep the promises, changes, and proof in view so the next meeting starts where the last
+              one actually ended.
             </p>
-            <Link to={session ? '/dashboard' : '/login'} className="button-primary px-12 py-4 text-lg shadow-xl shadow-primary/20">
-              Open Dashboard
-            </Link>
+            <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
+              <Link to={session ? '/dashboard' : '/login'} className="rounded-full bg-white px-9 py-4 text-base font-semibold text-slate-950 shadow-sm transition hover:bg-slate-100">
+                {session ? 'Open Momentum' : 'Get access'}
+              </Link>
+              <a href="#proof" className="inline-flex items-center gap-2 rounded-full border border-white/20 px-9 py-4 text-base font-semibold text-white/92 transition hover:bg-white/8">
+                Proof flow
+                <ArrowRight className="h-4 w-4" />
+              </a>
+            </div>
           </div>
-        </motion.section>
+        </section>
       </main>
 
-      <footer className="border-t border-border bg-gradient-to-b from-card to-background/50 backdrop-blur-sm">
-        <div className="max-w-7xl mx-auto px-6 md:px-12 py-12 md:py-16">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-12 mb-12">
-            {/* Brand Column */}
-            <div>
-              <div className="flex items-center mb-4">
-                <MomentumLogo className="h-8 w-auto max-w-[180px]" />
-              </div>
-              <p className="text-sm text-muted-foreground leading-relaxed">Transform your meetings into actionable intelligence with AI-powered task automation.</p>
-            </div>
-
-            {/* Product Column */}
-            <div>
-              <h3 className="font-semibold text-foreground mb-4 text-sm uppercase tracking-wide">Product</h3>
-              <ul className="space-y-2">
-                <li><a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Features</a></li>
-                <li><a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Pricing</a></li>
-                <li><a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Documentation</a></li>
-                <li><a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Status</a></li>
-              </ul>
-            </div>
-
-            {/* Company Column */}
-            <div>
-              <h3 className="font-semibold text-foreground mb-4 text-sm uppercase tracking-wide">Company</h3>
-              <ul className="space-y-2">
-                <li><a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">About</a></li>
-                <li><a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Blog</a></li>
-                <li><a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Privacy</a></li>
-                <li><a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Terms</a></li>
-              </ul>
+      <footer className="px-6 py-10 lg:px-10 xl:px-16">
+        <div className="mx-auto flex max-w-7xl flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="text-sm font-black uppercase tracking-[0.22em] text-foreground">Momentum</div>
+            <div className="mt-1 text-sm text-muted-foreground">
+              Meetings become visible commitments, proof, and continuity.
             </div>
           </div>
 
-          {/* Divider */}
-          <div className="border-t border-border/50 pt-8">
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-              <p className="text-xs text-muted-foreground font-medium">© 2026 Moméntum-AI. All rights reserved.</p>
-              <div className="flex items-center gap-6">
-                <a href="#" className="text-muted-foreground hover:text-foreground transition-colors">
-                  <span className="text-xs font-medium">Twitter</span>
-                </a>
-                <a href="#" className="text-muted-foreground hover:text-foreground transition-colors">
-                  <span className="text-xs font-medium">LinkedIn</span>
-                </a>
-                <a href="#" className="text-muted-foreground hover:text-foreground transition-colors">
-                  <span className="text-xs font-medium">GitHub</span>
-                </a>
-              </div>
-            </div>
+          <div className="flex flex-wrap items-center gap-5 text-sm font-semibold text-muted-foreground">
+            <a href="#proof" className="transition hover:text-foreground">
+              Proof flow
+            </a>
+            <Link to={session ? '/dashboard' : '/login'} className="inline-flex items-center gap-2 transition hover:text-foreground">
+              Workspace
+              <ArrowRight className="h-4 w-4" />
+            </Link>
           </div>
         </div>
       </footer>

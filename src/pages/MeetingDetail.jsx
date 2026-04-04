@@ -6,10 +6,8 @@ import {
   Bot,
   Clock3,
   CalendarClock,
-  CheckCircle2,
   FileAudio,
   FileText,
-  MessageSquare,
   Pencil,
   Plus,
   Save,
@@ -17,7 +15,6 @@ import {
   Trash2,
   User,
   Users,
-  Waves,
   X,
 } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -34,6 +31,7 @@ import {
   updateWorkspaceParticipant,
   updateWorkspaceTask,
 } from '../lib/workspace-data';
+import { buildMeetingMemory } from '../lib/meeting-memory';
 import { getRiskPlaybook } from '../lib/risk-playbooks';
 
 function scoreBarClass(color) {
@@ -76,7 +74,7 @@ export default function MeetingDetail() {
   });
   const [savingParticipant, setSavingParticipant] = useState(false);
   const [removingParticipant, setRemovingParticipant] = useState(false);
-  const [answer, setAnswer] = useState('');
+  const [answer, setAnswer] = useState(null);
   const [asking, setAsking] = useState(false);
   const [processingStored, setProcessingStored] = useState(false);
   const [surfaceError, setSurfaceError] = useState('');
@@ -122,6 +120,11 @@ export default function MeetingDetail() {
       .join(' ')
       .trim();
   }, [meeting]);
+
+  const meetingMemory = useMemo(
+    () => buildMeetingMemory(meeting, snapshot.meetings),
+    [meeting, snapshot.meetings]
+  );
 
   useEffect(() => {
     setMeetingTitleDraft(String(meeting?.aiTitle || '').trim());
@@ -211,7 +214,7 @@ export default function MeetingDetail() {
 
   async function handleAskMessage(text, mention) {
     setSurfaceError('');
-    setAnswer('');
+    setAnswer(null);
     setAsking(true);
     try {
       const enrichedQuestion = mention ? `${text}\n\nContext hint: prioritize ${mention}.` : text;
@@ -449,6 +452,20 @@ export default function MeetingDetail() {
     }
   }
 
+  function jumpToTranscriptEvidence(snippet) {
+    const normalizedSnippet = String(snippet || '').trim();
+    if (normalizedSnippet) {
+      setTranscriptQuery(
+        normalizedSnippet
+          .split(/\s+/)
+          .slice(0, 6)
+          .join(' ')
+      );
+    }
+
+    handleRiskTarget('transcript');
+  }
+
   function openRiskDetail(risk) {
     setSelectedRiskDetail({
       risk,
@@ -635,6 +652,122 @@ export default function MeetingDetail() {
         )}
       </AnimatePresence>
 
+      <motion.section variants={fadeUp} className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+        <div className="glass-panel p-8">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.24em] text-muted-foreground mb-2">
+                Since last meeting
+              </div>
+              <h2 className="text-2xl font-extrabold tracking-tight text-foreground">
+                What changed since the last related conversation
+              </h2>
+            </div>
+            {meetingMemory.previousMeeting ? (
+              <Link to={`/dashboard/meetings/${meetingMemory.previousMeeting.id}`} className="button-secondary text-xs">
+                Open previous meeting
+              </Link>
+            ) : null}
+          </div>
+
+          <p className="mt-4 max-w-3xl text-sm leading-6 text-muted-foreground">
+            {meetingMemory.summary}
+          </p>
+
+          {meetingMemory.previousMeeting ? (
+            <>
+              <div className="mt-6 rounded-2xl border border-border bg-secondary/40 p-5">
+                <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-muted-foreground">
+                  Comparison target
+                </div>
+                <div className="mt-2 text-lg font-extrabold text-foreground">
+                  {meetingMemory.previousMeeting.aiTitle}
+                </div>
+                <div className="mt-1 text-sm text-muted-foreground">
+                  {meetingMemory.previousMeeting.timeLabel}
+                </div>
+              </div>
+
+              <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <MemoryCountCard label="Resurfaced" value={meetingMemory.resurfacedTasks.length} tone="amber" />
+                <MemoryCountCard label="Owner shifts" value={meetingMemory.ownerChanges.length} tone="blue" />
+                <MemoryCountCard label="Timeline shifts" value={meetingMemory.timelineShifts.length} tone="violet" />
+                <MemoryCountCard label="New commitments" value={meetingMemory.newCommitments.length} tone="emerald" />
+              </div>
+            </>
+          ) : (
+            <div className="mt-6 rounded-2xl border border-dashed border-border bg-secondary/40 p-6 text-sm font-medium text-muted-foreground">
+              Momentum will start building continuity as soon as this workspace has another related meeting to compare against.
+            </div>
+          )}
+        </div>
+
+        <div className="glass-panel p-8">
+          <div className="text-[10px] font-bold uppercase tracking-[0.24em] text-muted-foreground mb-2">
+            Commitment drift
+          </div>
+          <h2 className="text-2xl font-extrabold tracking-tight text-foreground mb-5">
+            The changes that matter most
+          </h2>
+
+          <div className="space-y-3">
+            {meetingMemory.signals.map((signal) => (
+              <div key={signal.id} className="rounded-2xl border border-border bg-secondary/40 p-4">
+                <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-primary">
+                  {formatSignalType(signal.type)}
+                </div>
+                <div className="mt-2 text-sm font-extrabold text-foreground">
+                  {signal.label}
+                </div>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  {signal.detail}
+                </p>
+              </div>
+            ))}
+
+            {meetingMemory.signals.length === 0 && (
+              <div className="rounded-2xl border border-dashed border-border bg-secondary/40 p-6 text-sm font-medium text-muted-foreground">
+                No commitment drift was detected between this meeting and the closest prior one.
+              </div>
+            )}
+          </div>
+
+          <div className="mt-6 border-t border-border pt-6">
+            <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.24em] text-muted-foreground">
+              <CalendarClock className="h-4 w-4 text-primary" />
+              Next meeting brief
+            </div>
+            <h3 className="mt-3 text-xl font-extrabold tracking-tight text-foreground">
+              What to open with next time
+            </h3>
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">
+              {meetingMemory.briefHeadline}
+            </p>
+
+            <div className="mt-5 space-y-3">
+              {meetingMemory.briefItems.map((item, index) => (
+                <button
+                  key={`${meeting.id}-${item.id}`}
+                  type="button"
+                  onClick={() => handleRiskTarget(item.target || 'tasks')}
+                  className="w-full rounded-2xl border border-border bg-background px-4 py-4 text-left transition hover:bg-secondary"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-extrabold text-primary">
+                      {index + 1}
+                    </div>
+                    <div>
+                      <div className="text-sm font-extrabold text-foreground">{item.title}</div>
+                      <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.detail}</p>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </motion.section>
+
       <motion.section variants={fadeUp} className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
         
         {/* Playback & Roster Side */}
@@ -651,12 +784,12 @@ export default function MeetingDetail() {
             <div className="space-y-4">
               {meeting.processingStatus === 'pending-analysis' && (
                 <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-5">
-                  <div className="text-sm font-bold text-amber-600 dark:text-amber-400 mb-2">Signal captured. Neural analysis pending.</div>
+                  <div className="text-sm font-bold text-amber-600 dark:text-amber-400 mb-2">Recording saved. Analysis pending.</div>
                   <p className="text-sm leading-relaxed text-muted-foreground font-medium mb-4">
-                    Initiate extraction sequence to align this raw data into executable tasks and searchable transcripts.
+                    Run analysis to extract follow-ups, decisions, and searchable transcript evidence from this recording.
                   </p>
                   <button onClick={handleStoredProcessing} disabled={processingStored} className="button-secondary">
-                    {processingStored ? 'Analyzing Meeting...' : 'Initiate Extraction'}
+                    {processingStored ? 'Analyzing recording...' : 'Analyze recording'}
                   </button>
                 </div>
               )}
@@ -668,7 +801,7 @@ export default function MeetingDetail() {
                     fileName={`${meeting.aiTitle || meeting.rawTitle || 'Meeting audio'}.mp3`}
                   />
                   <div className="mt-4 text-xs font-medium text-muted-foreground italic">
-                    Listen to the immutable recording alongside extracted insights.
+                    Listen to the source audio beside the extracted follow-ups and transcript evidence.
                   </div>
                 </div>
               ) : (
@@ -679,7 +812,7 @@ export default function MeetingDetail() {
             </div>
           </div>
 
-          <div ref={tasksSectionRef} className="glass-panel p-8">
+          <div className="glass-panel p-8">
             <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.24em] text-muted-foreground mb-4">
               <Users className="h-4 w-4 text-blue-500" />
               People in the room
@@ -721,7 +854,7 @@ export default function MeetingDetail() {
 
               {(meeting.participantRoster || []).length === 0 && (
                 <div className="rounded-2xl border border-dashed border-border bg-secondary/50 p-6 text-sm text-muted-foreground font-medium text-center">
-                  No active signatures logged.
+                  No participant roster is available for this meeting yet.
                 </div>
               )}
             </div>
@@ -730,7 +863,7 @@ export default function MeetingDetail() {
 
         {/* Tasks & Action Column */}
         <div className="space-y-6">
-          <div className="glass-panel p-8">
+          <div ref={tasksSectionRef} className="glass-panel p-8">
             <div className="flex items-center justify-between mb-6">
               <div>
                 <div className="text-[10px] font-bold uppercase tracking-[0.24em] text-muted-foreground mb-1">
@@ -915,7 +1048,7 @@ export default function MeetingDetail() {
 
               {meeting.tasks.length === 0 && (
                 <div className="rounded-2xl border border-dashed border-border bg-secondary/50 p-8 text-center text-sm font-medium text-muted-foreground">
-                  No execution vectors identified.
+                  No follow-ups were extracted from this meeting yet.
                 </div>
               )}
             </div>
@@ -965,13 +1098,62 @@ export default function MeetingDetail() {
           <div className="glass-panel p-8">
             <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.24em] text-muted-foreground mb-4">
               <Bot className="h-4 w-4 text-blue-500" />
-              Ask Moméntum AI
+              Question the record
             </div>
-            <AiInput003 onSendMessage={handleAskMessage} loading={asking} placeholder="Ask about the meeting..." />
+            <AiInput003
+              onSendMessage={handleAskMessage}
+              loading={asking}
+              placeholder="Ask about the transcript, decisions, or follow-ups..."
+              submitLabel="Search the record"
+              loadingLabel="Checking evidence..."
+            />
             <AnimatePresence>
               {answer && (
-                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-4 p-4 rounded-xl bg-primary/5 border border-primary/20 text-sm font-medium leading-relaxed text-foreground shadow-inner">
-                  {answer}
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-4 rounded-2xl border border-primary/20 bg-primary/5 p-5 shadow-inner">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-muted-foreground">
+                      Meeting answer
+                    </div>
+                    <div className={`rounded-lg border px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.22em] ${getAnswerSupportMeta(answer.support).className}`}>
+                      {getAnswerSupportMeta(answer.support).label}
+                    </div>
+                  </div>
+
+                  <p className="mt-3 text-sm font-medium leading-7 text-foreground">
+                    {answer.text}
+                  </p>
+
+                  {answer.note ? (
+                    <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                      {answer.note}
+                    </p>
+                  ) : null}
+
+                  {answer.evidence.length > 0 ? (
+                    <div className="mt-5 border-t border-primary/10 pt-4">
+                      <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-muted-foreground mb-3">
+                        Supporting transcript evidence
+                      </div>
+                      <div className="space-y-3">
+                        {answer.evidence.map((snippet) => (
+                          <button
+                            key={snippet.id}
+                            type="button"
+                            onClick={() => jumpToTranscriptEvidence(snippet.text)}
+                            className="w-full rounded-2xl border border-border bg-background px-4 py-3 text-left transition hover:bg-secondary"
+                          >
+                            <div className="flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-[0.22em] text-muted-foreground">
+                              <span>{snippet.speaker || 'Transcript'}</span>
+                              {snippet.time ? <span>{snippet.time}</span> : null}
+                            </div>
+                            <p className="mt-2 text-sm leading-6 text-foreground">
+                              {snippet.text}
+                            </p>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                 </motion.div>
               )}
             </AnimatePresence>
@@ -984,7 +1166,7 @@ export default function MeetingDetail() {
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-6 mb-8 border-b border-border pb-6">
           <div>
             <div className="text-[10px] font-bold uppercase tracking-[0.24em] text-muted-foreground mb-2">
-              Lexical Search
+              Search the transcript
             </div>
             <h2 className="text-3xl font-extrabold tracking-tight text-foreground">
               Transcript Evidence
@@ -996,7 +1178,7 @@ export default function MeetingDetail() {
               type="text"
               value={transcriptQuery}
               onChange={(event) => setTranscriptQuery(event.target.value)}
-              placeholder="Search statements..."
+              placeholder="Search the transcript..."
               className="w-full bg-card border border-border rounded-full py-3 pl-12 pr-4 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 shadow-sm font-medium"
             />
           </div>
@@ -1057,7 +1239,7 @@ export default function MeetingDetail() {
                 {meeting.transcriptText
                   ? 'Nothing matches this search.'
                   : meeting.processingStatus === 'pending-analysis'
-                    ? 'Transcript is not available yet. Start extraction first.'
+                    ? 'Transcript is not available yet. Analyze the recording first.'
                     : 'No transcript is available for this meeting yet.'}
               </div>
             </div>
@@ -1227,4 +1409,59 @@ export default function MeetingDetail() {
       </AnimatePresence>
     </motion.div>
   );
+}
+
+function MemoryCountCard({ label, value, tone = 'default' }) {
+  const toneClass =
+    tone === 'amber'
+      ? 'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-400'
+      : tone === 'blue'
+        ? 'border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-400'
+        : tone === 'violet'
+          ? 'border-violet-500/20 bg-violet-500/10 text-violet-600 dark:text-violet-400'
+          : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400';
+
+  return (
+    <div className={`rounded-2xl border p-4 ${toneClass}`}>
+      <div className="text-[10px] font-bold uppercase tracking-[0.22em]">{label}</div>
+      <div className="mt-2 text-3xl font-extrabold">{value}</div>
+    </div>
+  );
+}
+
+function formatSignalType(type) {
+  if (type === 'owner-shift') {
+    return 'Owner changed';
+  }
+
+  if (type === 'timeline-shift') {
+    return 'Timeline shifted';
+  }
+
+  if (type === 'repeat-review') {
+    return 'Still ambiguous';
+  }
+
+  return 'Commitment resurfaced';
+}
+
+function getAnswerSupportMeta(support) {
+  if (support === 'grounded') {
+    return {
+      label: 'Supported by transcript',
+      className: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+    };
+  }
+
+  if (support === 'not_supported') {
+    return {
+      label: 'Not supported',
+      className: 'border-rose-500/20 bg-rose-500/10 text-rose-600 dark:text-rose-400',
+    };
+  }
+
+  return {
+    label: 'Partial support',
+    className: 'border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400',
+  };
 }

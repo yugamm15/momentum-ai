@@ -8,6 +8,7 @@ import {
   Search,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { buildWorkspaceMemoryDigest } from '../../lib/meeting-memory';
 
 export default function DashboardOverview({ snapshot, loading, error }) {
   const meetings = Array.isArray(snapshot?.meetings) ? snapshot.meetings : [];
@@ -55,12 +56,23 @@ export default function DashboardOverview({ snapshot, loading, error }) {
             readyMeetings.length
         )
       : 0;
+  const memoryDigest = buildWorkspaceMemoryDigest(meetings);
   const readyMeetingsHref = buildDashboardPath('/dashboard/meetings', { filter: 'Ready' });
   const pendingMeetingsHref = buildDashboardPath('/dashboard/meetings', { filter: 'Pending Analysis' });
   const reviewTasksHref = buildDashboardPath('/dashboard/tasks', { filter: 'Needs review', status: 'needs-review' });
   const openFollowUpsHref = buildDashboardPath('/dashboard/tasks', { filter: 'Active' });
   const transcriptSearchHref = buildDashboardPath('/dashboard/meetings', { filter: 'Transcript Ready' });
   const uploadHref = '/dashboard/upload';
+  const workspaceBrief = buildWorkspaceBrief({
+    meetings,
+    pendingMeetings,
+    reviewTasks,
+    memoryDigest,
+    ownerLoad,
+    reviewTasksHref,
+    pendingMeetingsHref,
+    openFollowUpsHref,
+  });
 
   if (loading) {
     return (
@@ -128,27 +140,48 @@ export default function DashboardOverview({ snapshot, loading, error }) {
           </div>
 
           <div className="rounded-[32px] border border-[color:var(--line)] bg-[color:var(--soft-panel)] p-8">
-            <div className="text-[11px] font-bold uppercase tracking-[0.28em] text-slate-500">Operational pressure</div>
-            <div className="mt-5 space-y-5">
-              <PressureRow
-                label="Average meeting score"
-                value={`${averageActionability}%`}
-                hint="How actionable recent recordings look."
-                to={readyMeetingsHref}
-              />
-              <PressureRow
-                label="Unresolved review items"
-                value={reviewTasks.length}
-                hint="These are the fastest credibility wins in the demo."
-                to={reviewTasksHref}
-              />
-              <PressureRow
-                label="Owners carrying load"
-                value={ownerLoad.length}
-                hint="Shows whether follow-ups are clustering around a few people."
-                to={openFollowUpsHref}
-              />
+            <div className="text-[11px] font-bold uppercase tracking-[0.28em] text-slate-500">Next meeting brief</div>
+            <h2 className="mt-3 text-2xl font-semibold tracking-tight text-slate-950">
+              What needs airtime before the room moves on
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-slate-600">{workspaceBrief.headline}</p>
+
+            <div className="mt-6 space-y-3">
+              {workspaceBrief.items.map((item, index) => (
+                <BriefAction
+                  key={item.id}
+                  index={index + 1}
+                  title={item.title}
+                  detail={item.detail}
+                  to={item.to}
+                />
+              ))}
             </div>
+
+            <div className="mt-8 border-t border-[color:var(--line)] pt-6">
+              <div className="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-500">Operational pressure</div>
+              <div className="mt-4 space-y-4">
+                <PressureRow
+                  label="Average meeting score"
+                  value={`${averageActionability}%`}
+                  hint="How actionable recent recordings look."
+                  to={readyMeetingsHref}
+                />
+                <PressureRow
+                  label="Unresolved review items"
+                  value={reviewTasks.length}
+                  hint="These are the fastest credibility wins in the demo."
+                  to={reviewTasksHref}
+                />
+                <PressureRow
+                  label="Owners carrying load"
+                  value={ownerLoad.length}
+                  hint="Shows whether follow-ups are clustering around a few people."
+                  to={openFollowUpsHref}
+                />
+              </div>
+            </div>
+
             <div className="mt-8 flex flex-wrap gap-3">
               <Link to="/dashboard/tasks" className="inline-flex items-center gap-2 text-sm font-semibold text-slate-950 transition hover:text-[color:var(--accent-strong)]">
                 Open task board
@@ -160,6 +193,59 @@ export default function DashboardOverview({ snapshot, loading, error }) {
               </Link>
             </div>
           </div>
+        </section>
+
+        <section className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+          <Panel
+            eyebrow="Accountability memory"
+            title="What changed between recurring meetings"
+            body="This is the layer that turns Momentum into memory instead of another meeting bot."
+          >
+            <div className="grid gap-4 sm:grid-cols-3">
+              <MemoryDigestCard label="Resurfaced" value={memoryDigest.resurfacedCount} tone="amber" />
+              <MemoryDigestCard label="Owner shifts" value={memoryDigest.ownerShiftCount} tone="blue" />
+              <MemoryDigestCard label="Timeline shifts" value={memoryDigest.timelineShiftCount} tone="violet" />
+            </div>
+
+            <div className="mt-5 rounded-3xl border border-[color:var(--line)] bg-white px-5 py-5">
+              <div className="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-500">
+                Repeated ambiguity
+              </div>
+              <div className="mt-2 flex items-end justify-between gap-3">
+                <div className="text-3xl font-semibold tracking-tight text-slate-950">
+                  {memoryDigest.repeatedAmbiguityCount}
+                </div>
+                <Link to={reviewTasksHref} className="text-sm font-semibold text-slate-600 transition hover:text-slate-950">
+                  Open review queue
+                </Link>
+              </div>
+            </div>
+          </Panel>
+
+          <Panel
+            eyebrow="Recent drift"
+            title="The commitments that moved"
+            body="Owner changes, deadline movement, and recurring ambiguity show up here first."
+          >
+            <div className="space-y-4">
+              {memoryDigest.signals.map((signal) => (
+                <Link
+                  key={signal.id}
+                  to={signal.href}
+                  className="block rounded-3xl border border-[color:var(--line)] bg-white px-5 py-4 transition hover:border-slate-300 hover:bg-[color:var(--soft-panel)]"
+                >
+                  <div className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-500">
+                    {formatMemorySignalType(signal.type)}
+                  </div>
+                  <div className="mt-2 text-sm font-semibold text-slate-950">{signal.label}</div>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">{signal.detail}</p>
+                </Link>
+              ))}
+              {memoryDigest.signals.length === 0 && (
+                <EmptyPanelCopy copy="No cross-meeting drift is visible yet. Once related meetings repeat, Momentum will start surfacing changed commitments here." />
+              )}
+            </div>
+          </Panel>
         </section>
 
         {(error || recentMeetings.length === 0) && (
@@ -419,6 +505,41 @@ function EmptyPanelCopy({ copy }) {
   return <p className="rounded-3xl bg-[color:var(--soft-panel)] px-4 py-4 text-sm leading-6 text-slate-600">{copy}</p>;
 }
 
+function MemoryDigestCard({ label, value, tone = 'default' }) {
+  const toneClass =
+    tone === 'amber'
+      ? 'border-amber-500/20 bg-amber-500/10 text-amber-700'
+      : tone === 'blue'
+        ? 'border-blue-500/20 bg-blue-500/10 text-blue-600'
+        : 'border-violet-500/20 bg-violet-500/10 text-violet-600';
+
+  return (
+    <div className={`rounded-3xl border px-5 py-4 ${toneClass}`}>
+      <div className="text-[11px] font-bold uppercase tracking-[0.22em]">{label}</div>
+      <div className="mt-2 text-3xl font-semibold tracking-tight">{value}</div>
+    </div>
+  );
+}
+
+function BriefAction({ index, title, detail, to }) {
+  return (
+    <Link
+      to={to}
+      className="block rounded-3xl border border-[color:var(--line)] bg-white px-4 py-4 transition hover:border-slate-300 hover:bg-[color:var(--panel)]"
+    >
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[color:var(--soft-panel)] text-[11px] font-bold text-slate-950">
+          {index}
+        </div>
+        <div>
+          <div className="text-sm font-semibold text-slate-950">{title}</div>
+          <p className="mt-2 text-sm leading-6 text-slate-600">{detail}</p>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
 function Step({ index, title, body, icon, to }) {
   const content = (
     <>
@@ -444,6 +565,22 @@ function Step({ index, title, body, icon, to }) {
   );
 }
 
+function formatMemorySignalType(type) {
+  if (type === 'owner-shift') {
+    return 'Owner changed';
+  }
+
+  if (type === 'timeline-shift') {
+    return 'Timeline shifted';
+  }
+
+  if (type === 'repeat-review') {
+    return 'Still ambiguous';
+  }
+
+  return 'Commitment resurfaced';
+}
+
 function buildOwnerLoad(existingOwnerLoad, tasks) {
   if (Array.isArray(existingOwnerLoad) && existingOwnerLoad.length > 0) {
     return existingOwnerLoad.slice(0, 6).map((entry) => ({
@@ -467,6 +604,104 @@ function buildOwnerLoad(existingOwnerLoad, tasks) {
     .map(([owner, count]) => ({ owner, count }))
     .sort((left, right) => right.count - left.count)
     .slice(0, 6);
+}
+
+function buildWorkspaceBrief({
+  meetings,
+  pendingMeetings,
+  reviewTasks,
+  memoryDigest,
+  ownerLoad,
+  reviewTasksHref,
+  pendingMeetingsHref,
+  openFollowUpsHref,
+}) {
+  const items = [];
+  const firstSignalByType = new Map();
+
+  (memoryDigest.signals || []).forEach((signal) => {
+    if (!firstSignalByType.has(signal.type)) {
+      firstSignalByType.set(signal.type, signal);
+    }
+  });
+
+  if (reviewTasks.length > 0) {
+    items.push({
+      id: 'review-queue',
+      title: 'Resolve unclear follow-ups',
+      detail: `${reviewTasks.length} item${reviewTasks.length === 1 ? '' : 's'} still need a clear owner or deadline before the next meeting starts.`,
+      to: reviewTasksHref,
+    });
+  }
+
+  if (memoryDigest.resurfacedCount > 0) {
+    items.push({
+      id: 'resurfaced-work',
+      title: 'Revisit the work that came back',
+      detail: `${memoryDigest.resurfacedCount} commitment${memoryDigest.resurfacedCount === 1 ? '' : 's'} resurfaced across related meetings.`,
+      to: firstSignalByType.get('resurfaced')?.href || openFollowUpsHref,
+    });
+  }
+
+  if (memoryDigest.ownerShiftCount > 0) {
+    items.push({
+      id: 'owner-shifts',
+      title: 'Confirm the owner changes',
+      detail: `${memoryDigest.ownerShiftCount} follow-up${memoryDigest.ownerShiftCount === 1 ? '' : 's'} changed hands between meetings.`,
+      to: firstSignalByType.get('owner-shift')?.href || openFollowUpsHref,
+    });
+  }
+
+  if (memoryDigest.timelineShiftCount > 0) {
+    items.push({
+      id: 'timeline-shifts',
+      title: 'Reconfirm the moved deadlines',
+      detail: `${memoryDigest.timelineShiftCount} deadline${memoryDigest.timelineShiftCount === 1 ? '' : 's'} shifted between related meetings.`,
+      to: firstSignalByType.get('timeline-shift')?.href || openFollowUpsHref,
+    });
+  }
+
+  if (pendingMeetings.length > 0) {
+    items.push({
+      id: 'pending-analysis',
+      title: 'Finish the saved recordings',
+      detail: `${pendingMeetings.length} recording${pendingMeetings.length === 1 ? '' : 's'} are waiting for analysis and should land before the walkthrough.`,
+      to: pendingMeetingsHref,
+    });
+  }
+
+  if ((ownerLoad[0]?.count || 0) >= 3) {
+    items.push({
+      id: 'owner-load',
+      title: `Check ${ownerLoad[0].owner}'s follow-up load`,
+      detail: `${ownerLoad[0].count} open follow-ups are clustering around one owner.`,
+      to: buildOwnerTaskPath(ownerLoad[0].owner),
+    });
+  }
+
+  if (items.length === 0) {
+    const latestMeeting = meetings.find((meeting) => getMeetingState(meeting) === 'completed') || meetings[0];
+    items.push({
+      id: 'open-latest',
+      title: 'Open the latest meeting record',
+      detail: 'The workspace is caught up right now. Use the freshest meeting as the proof surface for the next review.',
+      to: latestMeeting ? `/dashboard/meetings/${latestMeeting.id}` : '/dashboard/meetings',
+    });
+  }
+
+  const leadTitles = items
+    .slice(0, 2)
+    .map((item) => item.title.charAt(0).toLowerCase() + item.title.slice(1));
+
+  const headline =
+    leadTitles.length > 1
+      ? `Before the next meeting, ${leadTitles[0]} and ${leadTitles[1]}.`
+      : `Before the next meeting, ${leadTitles[0]}.`;
+
+  return {
+    headline,
+    items: items.slice(0, 4),
+  };
 }
 
 function getMeetingTitle(meeting) {
