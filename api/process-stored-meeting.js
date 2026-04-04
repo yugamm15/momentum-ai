@@ -8,6 +8,7 @@ import {
   inferMeetingCode,
   isRawUploadStatus,
 } from './_lib/meeting-audio.js';
+import { getLegacyTableNames } from './_lib/legacy-tables.js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -31,8 +32,9 @@ export async function POST(request) {
     }
 
     const supabase = createSupabaseClient(env);
+    const legacyTables = await getLegacyTableNames(supabase);
     const { data: meeting, error } = await supabase
-      .from('meetings')
+      .from(legacyTables.meetings)
       .select('id, title, summary, transcript, audio_url, status')
       .eq('id', meetingId)
       .single();

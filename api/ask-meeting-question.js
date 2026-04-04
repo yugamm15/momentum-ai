@@ -3,6 +3,7 @@ import {
   createSupabaseClient,
   getEnv,
 } from './_lib/meeting-processing.js';
+import { getUnifiedWorkspaceSnapshot } from './_lib/unified-workspace.js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -31,23 +32,23 @@ export async function POST(request) {
     }
 
     const supabase = createSupabaseClient(env);
-    const { data: meeting, error } = await supabase
-      .from('meetings')
-      .select('id, title, transcript, summary')
-      .eq('id', meetingId)
-      .single();
+    const snapshot = await getUnifiedWorkspaceSnapshot(supabase);
+    const meeting = snapshot.meetings.find((item) => item.id === meetingId);
 
-    if (error || !meeting?.id) {
-      return json({ error: error?.message || 'Meeting not found.' }, 404);
+    if (!meeting?.id) {
+      return json({ error: 'Meeting not found.' }, 404);
     }
 
-    if (!String(meeting.transcript || '').trim()) {
+    const transcript = String(meeting.transcriptText || '').trim() ||
+      (Array.isArray(meeting.transcript) ? meeting.transcript.map((segment) => segment.text).join(' ') : '');
+
+    if (!String(transcript || '').trim()) {
       return json({ error: 'This meeting does not have a transcript yet.' }, 400);
     }
 
     const answer = await answerQuestionFromTranscript({
-      transcript: meeting.transcript,
-      summary: meeting.summary,
+      transcript,
+      summary: meeting.summaryParagraph,
       question,
       geminiKey: env.geminiKey,
     });

@@ -1,5 +1,6 @@
 /* global process */
 import { Buffer } from 'node:buffer';
+import { getLegacyTableNames } from './legacy-tables.js';
 
 const STORAGE_BUCKET = process.env.STORAGE_BUCKET || 'meetings';
 const RAW_UPLOAD_STATUS_PREFIX = 'raw-uploaded:';
@@ -20,7 +21,16 @@ export async function storeRawMeetingAudio({
   contentType,
   meetingCode,
   meetingUrl,
+  meetingLabel,
+  participantNames,
   sessionId,
+  recordingStartedAt,
+  recordingStoppedAt,
+  sourcePlatform,
+  extensionVersion,
+  connectionToken,
+  workspaceId,
+  userId,
   bucketName = STORAGE_BUCKET,
 }) {
   const normalizedFile = await normalizeInputFile(file, contentType, meetingCode);
@@ -28,10 +38,19 @@ export async function storeRawMeetingAudio({
   const payload = buildRawMeetingPayload({
     meetingCode,
     meetingUrl,
+    meetingLabel,
+    participantNames,
     sessionId,
     audioUrl: storage.audioUrl,
     contentType: normalizedFile.type,
     bytes: normalizedFile.size,
+    recordingStartedAt,
+    recordingStoppedAt,
+    sourcePlatform,
+    extensionVersion,
+    connectionToken,
+    workspaceId,
+    userId,
   });
   const meeting = await upsertRawMeetingRow(supabase, sessionId, payload);
 
@@ -87,18 +106,45 @@ export function inferMeetingCode(meeting) {
   return '';
 }
 
-function buildRawMeetingPayload({ meetingCode, meetingUrl, sessionId, audioUrl, contentType, bytes }) {
+function buildRawMeetingPayload({
+  meetingCode,
+  meetingUrl,
+  meetingLabel,
+  participantNames,
+  sessionId,
+  audioUrl,
+  contentType,
+  bytes,
+  recordingStartedAt,
+  recordingStoppedAt,
+  sourcePlatform,
+  extensionVersion,
+  connectionToken,
+  workspaceId,
+  userId,
+}) {
   const readableCode = sanitizeMeetingCode(meetingCode) || 'meet-session';
   const recordedAt = new Date().toLocaleString('en-US', { timeZone: 'Asia/Calcutta' });
 
   return {
-    title: `Audio captured for ${readableCode}`,
+    title: meetingLabel ? `Audio captured for ${meetingLabel}` : `Audio captured for ${readableCode}`,
     summary: [
       'Raw meeting audio was saved by Momentum.',
       'AI transcription and analysis are pending.',
       meetingUrl ? `Source: ${meetingUrl}` : null,
+      sourcePlatform ? `Platform: ${sourcePlatform}.` : null,
+      meetingLabel ? `Visible label: ${meetingLabel}.` : null,
+      Array.isArray(participantNames) && participantNames.length > 0
+        ? `Participants: ${participantNames.join(', ')}.`
+        : null,
       `Format: ${contentType}. Size: ${Math.max(1, Math.round(bytes / 1024))} KB.`,
       sessionId ? `Session: ${sessionId}.` : null,
+      recordingStartedAt ? `Started: ${recordingStartedAt}.` : null,
+      recordingStoppedAt ? `Stopped: ${recordingStoppedAt}.` : null,
+      extensionVersion ? `Extension version: ${extensionVersion}.` : null,
+      connectionToken ? `Connection token present.` : null,
+      workspaceId ? `Workspace id: ${workspaceId}.` : null,
+      userId ? `User id: ${userId}.` : null,
       `Captured at: ${recordedAt}.`,
     ]
       .filter(Boolean)
@@ -112,11 +158,12 @@ function buildRawMeetingPayload({ meetingCode, meetingUrl, sessionId, audioUrl, 
 }
 
 async function upsertRawMeetingRow(supabase, sessionId, payload) {
+  const legacyTables = await getLegacyTableNames(supabase);
   const existing = sessionId ? await findExistingRawMeeting(supabase, sessionId) : null;
 
   if (existing?.id) {
     const { data, error } = await supabase
-      .from('meetings')
+      .from(legacyTables.meetings)
       .update(payload)
       .eq('id', existing.id)
       .select()
@@ -130,7 +177,7 @@ async function upsertRawMeetingRow(supabase, sessionId, payload) {
   }
 
   const { data, error } = await supabase
-    .from('meetings')
+    .from(legacyTables.meetings)
     .insert(payload)
     .select()
     .single();
@@ -143,13 +190,14 @@ async function upsertRawMeetingRow(supabase, sessionId, payload) {
 }
 
 async function findExistingRawMeeting(supabase, sessionId) {
+  const legacyTables = await getLegacyTableNames(supabase);
   const statuses = [
     buildRawUploadStatus(sessionId),
     sessionId ? `${LEGACY_RAW_UPLOAD_STATUS_PREFIX}${sessionId}` : LEGACY_RAW_UPLOAD_STATUS_PREFIX.slice(0, -1),
   ];
 
   const { data, error } = await supabase
-    .from('meetings')
+    .from(legacyTables.meetings)
     .select('id')
     .in('status', statuses)
     .order('created_at', { ascending: false })

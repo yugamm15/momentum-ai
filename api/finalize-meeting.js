@@ -48,6 +48,19 @@ export async function POST(request) {
       contentType,
       supabase,
       env,
+      sourceMetadata: {
+        sourcePlatform: body?.sourcePlatform || 'google_meet',
+        meetingCode: body?.meetingCode,
+        meetingUrl: body?.meetingUrl,
+        meetingLabel: body?.meetingLabel,
+        participantNames: Array.isArray(body?.participantNames) ? body.participantNames : [],
+        recordingStartedAt: body?.recordingStartedAt,
+        recordingStoppedAt: body?.recordingStoppedAt,
+        extensionVersion: body?.extensionVersion,
+        connectionToken: body?.connectionToken,
+        workspaceId: body?.workspaceId,
+        userId: body?.userId,
+      },
     });
 
     await removeChunks(supabase, chunkFiles);

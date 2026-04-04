@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { UploadCloud, FileAudio, Loader2, CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, FileAudio, Loader2, UploadCloud } from 'lucide-react';
 import { apiUrl } from '../../lib/api';
 
 export default function MeetingProcessor({ onComplete }) {
@@ -60,14 +60,19 @@ export default function MeetingProcessor({ onComplete }) {
   };
 
   return (
-    <div className="bg-white p-8 rounded-xl border shadow-sm max-w-xl mx-auto my-8">
-      <div className="text-center mb-6">
-        <h2 className="text-2xl font-bold text-slate-900">Manual Meeting Upload</h2>
-        <p className="text-slate-500 mt-2">Upload a recording and let the server handle transcription, analysis, and storage.</p>
+    <div className="momentum-card mx-auto max-w-3xl p-8">
+      <div className="mx-auto max-w-2xl text-center">
+        <div className="momentum-pill-accent mx-auto">Manual meeting upload</div>
+        <h2 className="mt-4 text-4xl font-semibold tracking-tight text-slate-950">
+          Keep a reliable demo fallback
+        </h2>
+        <p className="mt-4 text-base leading-8 text-slate-600">
+          Upload a recording and let the server handle transcription, extraction, scoring, and storage while the extension flow keeps evolving.
+        </p>
       </div>
 
       <div
-        className="border-2 border-dashed border-slate-300 bg-slate-50 rounded-xl p-10 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors mb-6"
+        className="momentum-card-soft mt-8 cursor-pointer border-2 border-dashed border-slate-300 bg-slate-50/85 p-10 transition hover:border-sky-300 hover:bg-white"
         onClick={() => fileInputRef.current?.click()}
       >
         <input
@@ -78,38 +83,56 @@ export default function MeetingProcessor({ onComplete }) {
           onChange={handleFileChange}
         />
 
-        {file ? (
-          <>
-            <FileAudio className="w-12 h-12 text-blue-600 mb-3" />
-            <p className="font-medium text-slate-900">{file.name}</p>
-            <p className="text-xs text-slate-500 mt-1">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
-          </>
-        ) : (
-          <>
-            <UploadCloud className="w-12 h-12 text-slate-400 mb-3" />
-            <p className="font-medium text-slate-900">Click to browse or drag file here</p>
-            <p className="text-xs text-slate-500 mt-1">Supports `.webm` recordings from the Momentum extension</p>
-          </>
-        )}
+        <div className="flex flex-col items-center justify-center text-center">
+          {file ? (
+            <>
+              <div className="flex h-16 w-16 items-center justify-center rounded-[20px] bg-sky-50 text-sky-700">
+                <FileAudio className="h-8 w-8" />
+              </div>
+              <p className="mt-4 font-semibold text-slate-900">{file.name}</p>
+              <p className="mt-1 text-xs text-slate-500">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+            </>
+          ) : (
+            <>
+              <div className="flex h-16 w-16 items-center justify-center rounded-[20px] bg-slate-900 text-white">
+                <UploadCloud className="h-8 w-8" />
+              </div>
+              <p className="mt-4 font-semibold text-slate-900">Click to browse or drag a recording here</p>
+              <p className="mt-1 text-xs text-slate-500">
+                Best for `.webm` recordings captured from the Momentum extension
+              </p>
+            </>
+          )}
+        </div>
       </div>
 
-      {error && <div className="p-3 mb-6 bg-rose-50 text-rose-700 text-sm rounded-md border border-rose-200">{error}</div>}
-      {detail && !error && <div className="p-3 mb-6 bg-emerald-50 text-emerald-700 text-sm rounded-md border border-emerald-200">{detail}</div>}
+      {error ? (
+        <div className="momentum-card-soft mt-6 border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700">
+          {error}
+        </div>
+      ) : null}
+      {detail && !error ? (
+        <div className="momentum-card-soft mt-6 border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-700">
+          {detail}
+        </div>
+      ) : null}
 
       <button
         onClick={processMeeting}
         disabled={!file || status !== 'idle'}
-        className="w-full py-3 bg-slate-900 text-white rounded-lg font-medium hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+        className="momentum-button-primary mt-6 w-full"
       >
-        {status === 'idle' && 'Process Meeting AI'}
+        {status === 'idle' && 'Process meeting'}
         {status === 'uploading' && (
           <>
-            <Loader2 className="w-5 h-5 animate-spin" /> Uploading and analyzing...
+            <Loader2 className="h-5 w-5 animate-spin" />
+            Uploading and analyzing...
           </>
         )}
         {status === 'done' && (
           <>
-            <CheckCircle2 className="w-5 h-5" /> Processing Complete!
+            <CheckCircle2 className="h-5 w-5" />
+            Processing complete
           </>
         )}
       </button>

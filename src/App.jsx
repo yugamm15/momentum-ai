@@ -1,16 +1,41 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { BrowserRouter as Router, Navigate, Route, Routes } from 'react-router-dom';
+import { getCurrentSession, subscribeToAuthChanges } from './lib/auth';
 import Dashboard from './pages/Dashboard';
+import Landing from './pages/Landing';
+import Login from './pages/Login';
 
-// WE ARE IN EMERGENCY MODE: AUTH IS STRIPPED.
 export default function App() {
+  const [session, setSession] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    getCurrentSession()
+      .then((nextSession) => {
+        if (mounted) {
+          setSession(nextSession);
+        }
+      })
+      .catch(() => {});
+
+    const unsubscribe = subscribeToAuthChanges((nextSession) => {
+      setSession(nextSession);
+    });
+
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
+  }, []);
+
   return (
     <Router>
       <Routes>
-        {/* Force everyone straight to the dashboard. No Login. No Sign up. No Auth. */}
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/login" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/dashboard/*" element={<Dashboard />} />
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/" element={<Landing session={session} />} />
+        <Route path="/login" element={<Login session={session} />} />
+        <Route path="/dashboard/*" element={<Dashboard session={session} />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>
   );

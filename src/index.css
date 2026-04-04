@@ -1,38 +1,228 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
+    --background: 34 33% 96%;
+    --foreground: 222 47% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
+    --card-foreground: 222 47% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 240 5.9% 10%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 199 89% 48%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 30 33% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 30 33% 96%;
+    --muted-foreground: 215 16% 46%;
+    --accent: 37 97% 58%;
+    --accent-foreground: 222 47% 11%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 240 10% 3.9%;
-    --radius: 0.5rem;
+    --border: 31 24% 86%;
+    --input: 31 24% 86%;
+    --ring: 199 89% 48%;
+    --radius: 1rem;
   }
-}
 
-@layer base {
   * {
     @apply border-border;
   }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: 'Inter', system-ui, sans-serif;
+    position: relative;
+    min-height: 100vh;
+    font-family: 'Manrope', 'Segoe UI', system-ui, sans-serif;
+    background:
+      radial-gradient(circle at top left, rgba(56, 189, 248, 0.14), transparent 25%),
+      radial-gradient(circle at 85% 10%, rgba(251, 191, 36, 0.12), transparent 24%),
+      linear-gradient(180deg, #fffdfa 0%, #f7f1e7 100%);
+  }
+
+  body::before,
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: -1;
+  }
+
+  body::before {
+    background:
+      radial-gradient(circle at 18% 20%, rgba(125, 211, 252, 0.2), transparent 22%),
+      radial-gradient(circle at 78% 16%, rgba(253, 230, 138, 0.18), transparent 20%),
+      radial-gradient(circle at 50% 78%, rgba(56, 189, 248, 0.08), transparent 26%);
+    filter: blur(10px);
+  }
+
+  body::after {
+    background-image:
+      linear-gradient(rgba(15, 23, 42, 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(15, 23, 42, 0.05) 1px, transparent 1px);
+    background-size: 96px 96px;
+    mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.5), transparent 88%);
+    opacity: 0.35;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: 'Space Grotesk', 'Manrope', system-ui, sans-serif;
+  }
+
+  ::selection {
+    background: rgba(56, 189, 248, 0.24);
+    color: rgb(15, 23, 42);
+  }
+}
+
+@layer components {
+  .momentum-card {
+    @apply relative overflow-hidden rounded-[30px] border border-white/70 bg-white/90 shadow-[0_28px_80px_rgba(15,23,42,0.09)] backdrop-blur;
+  }
+
+  .momentum-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.55), transparent 38%);
+    pointer-events: none;
+  }
+
+  .momentum-card-soft {
+    @apply relative overflow-hidden rounded-[26px] border border-slate-200/80 bg-slate-50 shadow-[0_18px_45px_rgba(15,23,42,0.06)];
+  }
+
+  .momentum-dark-panel {
+    @apply relative overflow-hidden rounded-[32px] border border-slate-800/80 bg-slate-950 text-white shadow-[0_34px_100px_rgba(2,6,23,0.28)];
+  }
+
+  .momentum-dark-panel::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(circle at top left, rgba(56, 189, 248, 0.2), transparent 32%),
+      linear-gradient(140deg, rgba(255, 255, 255, 0.08), transparent 42%);
+    pointer-events: none;
+  }
+
+  .momentum-pill {
+    @apply inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-slate-600;
+  }
+
+  .momentum-pill-accent {
+    @apply inline-flex items-center gap-2 rounded-full border border-sky-200/70 bg-sky-50/90 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-sky-700;
+  }
+
+  .momentum-button-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-[20px] bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition duration-200 hover:-translate-y-0.5 hover:bg-slate-900;
+  }
+
+  .momentum-button-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-[20px] border border-slate-200 bg-white/90 px-5 py-3 text-sm font-semibold text-slate-700 transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white;
+  }
+
+  .momentum-input-shell {
+    @apply flex items-center gap-3 rounded-[22px] border border-slate-200/80 bg-white/90 px-4 py-3 shadow-[0_12px_30px_rgba(15,23,42,0.05)] transition focus-within:border-sky-300 focus-within:ring-4 focus-within:ring-sky-100;
+  }
+
+  .momentum-input-shell input,
+  .momentum-input-shell textarea,
+  .momentum-input-shell select {
+    @apply w-full border-0 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400;
+  }
+
+  .momentum-spotlight {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .momentum-spotlight::after {
+    content: '';
+    position: absolute;
+    inset: auto -20% -55% auto;
+    width: 240px;
+    height: 240px;
+    border-radius: 999px;
+    background: radial-gradient(circle, rgba(56, 189, 248, 0.18), transparent 65%);
+    pointer-events: none;
+    animation: drift 10s ease-in-out infinite;
+  }
+
+  .momentum-grid {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .momentum-grid::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(148, 163, 184, 0.12) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(148, 163, 184, 0.12) 1px, transparent 1px);
+    background-size: 44px 44px;
+    mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.35), transparent 82%);
+    opacity: 0.65;
+    pointer-events: none;
+  }
+
+  .momentum-number {
+    font-family: 'Space Grotesk', 'Manrope', system-ui, sans-serif;
+    letter-spacing: -0.05em;
+  }
+
+  .momentum-section-title {
+    @apply text-3xl font-semibold tracking-tight text-slate-950;
+  }
+
+  .momentum-copy {
+    @apply text-sm leading-7 text-slate-600;
+  }
+
+  .momentum-float {
+    animation: floatUp 8s ease-in-out infinite;
+  }
+
+  .momentum-glow {
+    animation: glowPulse 5s ease-in-out infinite;
+  }
+}
+
+@keyframes drift {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(12px, 14px, 0) scale(1.06);
+  }
+}
+
+@keyframes floatUp {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes glowPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 rgba(56, 189, 248, 0.18);
+  }
+  50% {
+    box-shadow: 0 28px 70px rgba(56, 189, 248, 0.18);
   }
 }

@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "backfill:v2": "node scripts/backfill-v2.js",
+    "setup:demo-workspace": "node scripts/setup-demo-workspace.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.101.1",

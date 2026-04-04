@@ -24,6 +24,15 @@ export async function POST(request) {
     const meetingCode = String(formData.get('meetingCode') || '').trim();
     const meetingUrl = String(formData.get('meetingUrl') || '').trim();
     const sessionId = String(formData.get('sessionId') || '').trim();
+    const meetingLabel = String(formData.get('meetingLabel') || '').trim();
+    const participantNames = parseParticipantNames(formData);
+    const recordingStartedAt = String(formData.get('recordingStartedAt') || '').trim();
+    const recordingStoppedAt = String(formData.get('recordingStoppedAt') || '').trim();
+    const sourcePlatform = String(formData.get('sourcePlatform') || 'google_meet').trim();
+    const extensionVersion = String(formData.get('extensionVersion') || '').trim();
+    const connectionToken = String(formData.get('connectionToken') || '').trim();
+    const workspaceId = String(formData.get('workspaceId') || '').trim();
+    const userId = String(formData.get('userId') || '').trim();
     const contentType =
       String(formData.get('contentType') || audioFile?.type || 'audio/webm').trim() || 'audio/webm';
 
@@ -43,6 +52,19 @@ export async function POST(request) {
         contentType,
         supabase,
         env,
+        sourceMetadata: {
+          sourcePlatform,
+          meetingCode,
+          meetingUrl,
+          meetingLabel,
+          participantNames,
+          recordingStartedAt,
+          recordingStoppedAt,
+          extensionVersion,
+          connectionToken,
+          workspaceId,
+          userId,
+        },
       });
 
       return json({
@@ -63,7 +85,16 @@ export async function POST(request) {
         contentType,
         meetingCode,
         meetingUrl,
+        meetingLabel,
+        participantNames,
         sessionId,
+        recordingStartedAt,
+        recordingStoppedAt,
+        sourcePlatform,
+        extensionVersion,
+        connectionToken,
+        workspaceId,
+        userId,
       });
 
       return json({
@@ -79,6 +110,35 @@ export async function POST(request) {
     }
   } catch (error) {
     return json({ error: error.message || 'Direct meeting upload failed.' }, 500);
+  }
+}
+
+function parseParticipantNames(formData) {
+  const directValues = formData
+    .getAll('participantNames')
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+
+  if (directValues.length > 0) {
+    return Array.from(new Set(directValues));
+  }
+
+  const serialized = String(formData.get('participantNamesJson') || '').trim();
+  if (!serialized) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(serialized);
+    return Array.from(
+      new Set(
+        (Array.isArray(parsed) ? parsed : [])
+          .map((value) => String(value || '').trim())
+          .filter(Boolean)
+      )
+    );
+  } catch {
+    return [];
   }
 }
 
