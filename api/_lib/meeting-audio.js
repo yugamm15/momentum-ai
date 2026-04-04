@@ -2,8 +2,8 @@
 import { Buffer } from 'node:buffer';
 import { getLegacyTableNames } from './legacy-tables.js';
 import {
-  cleanParticipantDisplayName,
   createPersonDirectory,
+  dedupeParticipantDisplayNames,
   matchDirectoryPerson,
 } from './people-directory.js';
 import { supportsV2WorkspaceSchema } from './v2-persistence.js';
@@ -138,17 +138,11 @@ export function inferMeetingCode(meeting) {
 export function extractRawMeetingMetadata(meeting, participantRows = []) {
   const summary = String(meeting?.summary || '').trim();
   const summaryMetadata = extractLegacySummaryMetadata(summary);
-  const participantNames = Array.from(
-    new Set(
-      [
-        ...(Array.isArray(participantRows) ? participantRows : []).map((row) => row?.display_name),
-        ...(summaryMetadata.participantNames || []),
-        ...parseSummaryParticipants(summary),
-      ]
-        .map((value) => cleanParticipantDisplayName(String(value || '').trim()))
-        .filter(Boolean)
-    )
-  );
+  const participantNames = dedupeParticipantDisplayNames([
+    ...(Array.isArray(participantRows) ? participantRows : []).map((row) => row?.display_name),
+    ...(summaryMetadata.participantNames || []),
+    ...parseSummaryParticipants(summary),
+  ]);
 
   return {
     sourcePlatform:
@@ -531,13 +525,7 @@ async function buildEmbeddedAudioDataUrl(file) {
 }
 
 async function syncRawMeetingParticipants(supabase, meetingId, participantNames, workspaceId) {
-  const dedupedNames = Array.from(
-    new Set(
-      (Array.isArray(participantNames) ? participantNames : [])
-        .map((value) => cleanParticipantDisplayName(String(value || '').trim()))
-        .filter(Boolean)
-    )
-  );
+  const dedupedNames = dedupeParticipantDisplayNames(participantNames);
 
   await supabase.from('meeting_participants').delete().eq('meeting_id', meetingId);
 
@@ -583,10 +571,7 @@ function parseSummaryParticipants(summary) {
     return [];
   }
 
-  return participants
-    .split(',')
-    .map((value) => cleanParticipantDisplayName(value.trim()))
-    .filter(Boolean);
+  return dedupeParticipantDisplayNames(participants.split(','));
 }
 
 function parseSummaryField(summary, pattern) {
@@ -628,9 +613,7 @@ function extractLegacySummaryMetadata(summary) {
       meetingCode: sanitizeMeetingCode(metadata?.meetingCode),
       meetingUrl: cleanNullable(metadata?.meetingUrl),
       meetingLabel: cleanNullable(metadata?.meetingLabel),
-      participantNames: Array.isArray(metadata?.participantNames)
-        ? metadata.participantNames.map((value) => String(value || '').trim()).filter(Boolean)
-        : [],
+      participantNames: dedupeParticipantDisplayNames(metadata?.participantNames),
       recordingStartedAt: cleanNullable(metadata?.recordingStartedAt),
       recordingStoppedAt: cleanNullable(metadata?.recordingStoppedAt),
       workspaceId: cleanNullable(metadata?.workspaceId),
@@ -648,9 +631,7 @@ function buildLegacySummaryWithMetadata(summary, metadata = {}) {
     meetingCode: sanitizeMeetingCode(metadata?.meetingCode),
     meetingUrl: cleanNullable(metadata?.meetingUrl),
     meetingLabel: cleanNullable(metadata?.meetingLabel),
-    participantNames: Array.isArray(metadata?.participantNames)
-      ? metadata.participantNames.map((value) => String(value || '').trim()).filter(Boolean)
-      : [],
+    participantNames: dedupeParticipantDisplayNames(metadata?.participantNames),
     recordingStartedAt: cleanNullable(metadata?.recordingStartedAt),
     recordingStoppedAt: cleanNullable(metadata?.recordingStoppedAt),
     connectionTokenPresent: Boolean(cleanNullable(metadata?.connectionToken)),

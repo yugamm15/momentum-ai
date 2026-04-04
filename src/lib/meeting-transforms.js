@@ -3,6 +3,9 @@ const sentenceSplitPattern = /(?<=[.!?])\s+/;
 const rawUploadStatusPrefixes = ['raw-uploaded:', 'audio-uploaded:'];
 const legacyMetadataMarker = '[MOMENTUM_META]';
 const participantNoisePatterns = [
+  /\bclose\b/i,
+  /\bdevice\b/i,
+  /\bdevices\b/i,
   /\bmic\b/i,
   /\bmicrophone\b/i,
   /\bcamera\b/i,
@@ -16,11 +19,33 @@ const participantNoisePatterns = [
   /\bcaptions\b/i,
   /\bapps\b/i,
   /\bpeople\b/i,
+  /\bparticipants\b/i,
+  /\bsettings\b/i,
   /\bchat\b/i,
   /\braise hand\b/i,
   /\bleave meeting\b/i,
   /\bend call\b/i,
 ];
+
+const participantNoiseWords = new Set([
+  'close',
+  'device',
+  'devices',
+  'mic',
+  'microphone',
+  'camera',
+  'videocam',
+  'mute',
+  'unmute',
+  'chat',
+  'captions',
+  'people',
+  'participants',
+  'panel',
+  'controls',
+  'settings',
+  'apps',
+]);
 const placeholderMeetingTitles = [
   'brief interaction',
   'brief exchange',
@@ -90,7 +115,11 @@ function splitSentences(text) {
 }
 
 function cleanParticipantDisplayName(value) {
-  let text = String(value || '').replace(/\s+/g, ' ').trim();
+  let text = String(value || '')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/[|/\\]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
   if (!text || text.includes('@') || /\d{4,}/.test(text)) {
     return '';
   }
@@ -105,6 +134,22 @@ function cleanParticipantDisplayName(value) {
   }
 
   if (participantNoisePatterns.some((pattern) => pattern.test(text))) {
+    return '';
+  }
+
+  const words = String(text || '')
+    .toLowerCase()
+    .match(/[a-z0-9]+/g) || [];
+
+  if (!words.length) {
+    return '';
+  }
+
+  if (words.some((word) => participantNoiseWords.has(word))) {
+    return '';
+  }
+
+  if (words.length > 5) {
     return '';
   }
 

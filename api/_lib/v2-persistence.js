@@ -1,6 +1,7 @@
 import {
   cleanParticipantDisplayName,
   createPersonDirectory,
+  dedupeParticipantDisplayNames,
   matchDirectoryPerson,
 } from './people-directory.js';
 
@@ -447,11 +448,11 @@ async function loadWorkspaceDirectory(supabase, workspaceId) {
 }
 
 function resolveParticipantRoster(participants = [], directory = []) {
+  const dedupedParticipants = dedupeParticipantDisplayNames(participants);
+
   return Array.from(
     new Map(
-      (Array.isArray(participants) ? participants : [])
-        .map((name) => cleanParticipantDisplayName(String(name || '').trim()))
-        .filter(Boolean)
+      dedupedParticipants
         .map((displayName) => {
           const match = matchDirectoryPerson(displayName, directory);
           const record = match.status === 'matched' ? match.record : null;

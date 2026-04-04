@@ -5,6 +5,33 @@ import {
   transformLegacyMeeting,
 } from './meeting-transforms';
 
+const participantNoisePatterns = [
+  /\bclose\b/i,
+  /\bdevice\b/i,
+  /\bdevices\b/i,
+  /\bmic\b/i,
+  /\bmicrophone\b/i,
+  /\bcamera\b/i,
+  /\bvideocam\b/i,
+  /\bmute\b/i,
+  /\bunmute\b/i,
+  /\bleft side panel\b/i,
+  /\bside panel\b/i,
+  /\bmeeting details\b/i,
+  /\bmeeting tools\b/i,
+  /\bmore actions\b/i,
+  /\bhost controls\b/i,
+  /\bcaptions\b/i,
+  /\bapps\b/i,
+  /\bpeople\b/i,
+  /\bparticipants\b/i,
+  /\bsettings\b/i,
+  /\bchat\b/i,
+  /\braise hand\b/i,
+  /\bleave meeting\b/i,
+  /\bend call\b/i,
+];
+
 function buildAnalytics(meetings, tasks, people = []) {
   const readyMeetings = meetings.filter((meeting) => meeting.processingStatus === 'ready');
   const pendingTasks = tasks.filter((task) => task.status !== 'done');
@@ -252,10 +279,193 @@ async function fetchWorkspaceSnapshotFromApi() {
       return null;
     }
 
-    return payload;
+    return normalizeApiSnapshot(payload);
   } catch {
     return null;
   }
+}
+
+function normalizeApiSnapshot(payload) {
+  const meetings = (Array.isArray(payload.meetings) ? payload.meetings : []).map((meeting) =>
+    normalizeApiMeeting(meeting)
+  );
+  const tasks = Array.isArray(payload.tasks) ? payload.tasks : [];
+  const people = normalizeApiPeople(payload.people);
+
+  return {
+    ...payload,
+    meetings,
+    tasks,
+    people,
+    liveMeetings: meetings,
+    liveTasks: tasks,
+    analytics: buildAnalytics(meetings, tasks, people),
+  };
+}
+
+function normalizeApiMeeting(meeting) {
+  const rosterByKey = new Map();
+
+  (Array.isArray(meeting?.participantRoster) ? meeting.participantRoster : []).forEach((participant, index) => {
+    const displayName = cleanParticipantDisplayName(participant?.displayName);
+    if (!displayName) {
+      return;
+    }
+
+    const key = normalizeParticipantKey(displayName);
+    if (!key) {
+      return;
+    }
+
+    if (!rosterByKey.has(key)) {
+      rosterByKey.set(key, {
+        id: participant?.id || `${meeting?.id || 'meeting'}-participant-${index + 1}`,
+        displayName,
+        profileId: participant?.profileId || null,
+        profileName: participant?.profileName || '',
+        email: participant?.email || '',
+        role: participant?.role || 'guest',
+        matchStatus: participant?.matchStatus || 'unmatched',
+        confidence: Number(participant?.confidence || 0.68),
+      });
+    }
+  });
+
+  const participants = dedupeParticipantNames([
+    ...(Array.isArray(meeting?.participants) ? meeting.participants : []),
+    ...Array.from(rosterByKey.values()).map((participant) => participant.displayName),
+  ]);
+
+  const participantRoster =
+    rosterByKey.size > 0
+      ? Array.from(rosterByKey.values())
+      : participants.map((displayName, index) => ({
+          id: `${meeting?.id || 'meeting'}-participant-fallback-${index + 1}`,
+          displayName,
+          profileId: null,
+          profileName: '',
+          email: '',
+          role: 'guest',
+          matchStatus: 'unmatched',
+          confidence: 0.68,
+        }));
+
+  const createdAt =
+    String(meeting?.createdAt || '').trim() ||
+    String(meeting?.created_at || '').trim() ||
+    null;
+  const localTimeLabel = formatMeetingTimeLabel(createdAt);
+
+  return {
+    ...meeting,
+    createdAt,
+    participants,
+    participantRoster,
+    timeLabel: localTimeLabel || meeting?.timeLabel || 'Recent meeting',
+  };
+}
+
+function normalizeApiPeople(people) {
+  const unique = new Map();
+
+  (Array.isArray(people) ? people : []).forEach((person, index) => {
+    const displayName = cleanParticipantDisplayName(person?.displayName);
+    if (!displayName) {
+      return;
+    }
+
+    const key = person?.profileId
+      ? `profile:${person.profileId}`
+      : `guest:${normalizeParticipantKey(displayName)}`;
+    if (!key || unique.has(key)) {
+      return;
+    }
+
+    unique.set(key, {
+      id: person?.id || `${key}-${index + 1}`,
+      profileId: person?.profileId || null,
+      displayName,
+      email: person?.email || '',
+      role: person?.role || 'guest',
+      source: person?.source || 'meeting',
+      isWorkspaceMember: Boolean(person?.isWorkspaceMember),
+      meetingCount: Number(person?.meetingCount || 0),
+      ownedTaskCount: Number(person?.ownedTaskCount || 0),
+      openTaskCount: Number(person?.openTaskCount || 0),
+    });
+  });
+
+  return Array.from(unique.values());
+}
+
+function dedupeParticipantNames(names = []) {
+  const unique = new Map();
+
+  (Array.isArray(names) ? names : []).forEach((name) => {
+    const displayName = cleanParticipantDisplayName(name);
+    if (!displayName) {
+      return;
+    }
+
+    const key = normalizeParticipantKey(displayName);
+    if (!key || unique.has(key)) {
+      return;
+    }
+
+    unique.set(key, displayName);
+  });
+
+  return Array.from(unique.values());
+}
+
+function cleanParticipantDisplayName(value) {
+  let text = String(value || '')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/[|/\\]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!text || text.includes('@') || /\d{4,}/.test(text)) {
+    return '';
+  }
+
+  if (participantNoisePatterns.some((pattern) => pattern.test(text))) {
+    return '';
+  }
+
+  const repeated = text.match(/^(.+?)\s*\1$/i);
+  if (repeated?.[1]) {
+    text = repeated[1].trim();
+  }
+
+  if (participantNoisePatterns.some((pattern) => pattern.test(text))) {
+    return '';
+  }
+
+  return text;
+}
+
+function normalizeParticipantKey(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s'.-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function formatMeetingTimeLabel(value) {
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(date);
 }
 
 async function updateWorkspaceTaskThroughApi(taskId, updates) {

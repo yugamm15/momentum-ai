@@ -7,6 +7,9 @@ export function normalizePersonName(value) {
 }
 
 const participantNoisePatterns = [
+  /\bclose\b/i,
+  /\bdevice\b/i,
+  /\bdevices\b/i,
   /\bmic\b/i,
   /\bmicrophone\b/i,
   /\bcamera\b/i,
@@ -33,10 +36,36 @@ const participantNoisePatterns = [
   /\bcaptions\b/i,
   /\bapps\b/i,
   /\bpeople\b/i,
+  /\bparticipants\b/i,
+  /\bsettings\b/i,
 ];
 
+const participantNoiseWords = new Set([
+  'close',
+  'device',
+  'devices',
+  'mic',
+  'microphone',
+  'camera',
+  'videocam',
+  'mute',
+  'unmute',
+  'chat',
+  'captions',
+  'people',
+  'participants',
+  'panel',
+  'controls',
+  'settings',
+  'apps',
+]);
+
 export function cleanParticipantDisplayName(value) {
-  let text = String(value || '').replace(/\s+/g, ' ').trim();
+  let text = String(value || '')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/[|/\\]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
   if (!text || text.includes('@') || /\d{4,}/.test(text)) {
     return '';
   }
@@ -54,7 +83,41 @@ export function cleanParticipantDisplayName(value) {
     return '';
   }
 
+  const words = normalizePersonName(text).split(' ').filter(Boolean);
+  if (!words.length) {
+    return '';
+  }
+
+  const hasNoiseWord = words.some((word) => participantNoiseWords.has(word));
+  if (hasNoiseWord) {
+    return '';
+  }
+
+  if (words.length > 5) {
+    return '';
+  }
+
   return text;
+}
+
+export function dedupeParticipantDisplayNames(names = []) {
+  const unique = new Map();
+
+  (Array.isArray(names) ? names : []).forEach((name) => {
+    const displayName = cleanParticipantDisplayName(name);
+    if (!displayName) {
+      return;
+    }
+
+    const key = normalizePersonName(displayName);
+    if (!key || unique.has(key)) {
+      return;
+    }
+
+    unique.set(key, displayName);
+  });
+
+  return Array.from(unique.values());
 }
 
 export function createPersonDirectory(profiles = [], membershipByProfileId = new Map()) {

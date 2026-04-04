@@ -337,8 +337,16 @@ async function loadV2Snapshot(supabase, options = {}) {
     const persistedParticipantRoster = (participantsByMeeting.get(meeting.id) || [])
       .map((item) => buildParticipantRosterEntry(item, directory))
       .filter(Boolean);
+    const dedupedPersistedParticipantRoster = Array.from(
+      new Map(
+        persistedParticipantRoster.map((participant) => [
+          normalizePersonName(participant.displayName),
+          participant,
+        ])
+      ).values()
+    );
     const fallbackParticipantRoster =
-      persistedParticipantRoster.length > 0
+      dedupedPersistedParticipantRoster.length > 0
         ? []
         : (rawMetadata.participantNames || []).map((displayName, index) => ({
             id: `${meeting.id}-participant-fallback-${index + 1}`,
@@ -351,7 +359,7 @@ async function loadV2Snapshot(supabase, options = {}) {
             confidence: 0.68,
           }));
     const participantRoster = persistedParticipantRoster.length > 0
-      ? persistedParticipantRoster
+      ? dedupedPersistedParticipantRoster
       : fallbackParticipantRoster;
     const participantNames = participantRoster.map((item) => item.displayName);
     const rawTranscriptSegments = transcriptByMeeting.get(meeting.id) || [];
