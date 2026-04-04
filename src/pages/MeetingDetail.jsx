@@ -81,6 +81,7 @@ export default function MeetingDetail() {
   const [processingStored, setProcessingStored] = useState(false);
   const [surfaceError, setSurfaceError] = useState('');
   const [transcriptQuery, setTranscriptQuery] = useState('');
+  const [selectedRiskDetail, setSelectedRiskDetail] = useState(null);
   const meetingCardPressTimerRef = useRef(null);
   const meetingActionMenuRef = useRef(null);
   const audioSectionRef = useRef(null);
@@ -126,6 +127,7 @@ export default function MeetingDetail() {
     setMeetingTitleDraft(String(meeting?.aiTitle || '').trim());
     setEditingMeetingTitle(false);
     setShowMeetingActions(false);
+    setSelectedRiskDetail(null);
     setParticipantModal({
       open: false,
       participantId: '',
@@ -445,6 +447,17 @@ export default function MeetingDetail() {
     if (targetRef?.current) {
       targetRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
+  }
+
+  function openRiskDetail(risk) {
+    setSelectedRiskDetail({
+      risk,
+      playbook: getRiskPlaybook({ risk, meeting }),
+    });
+  }
+
+  function closeRiskDetail() {
+    setSelectedRiskDetail(null);
   }
 
   return (
@@ -919,61 +932,25 @@ export default function MeetingDetail() {
 
             <div className="space-y-3">
               {(meeting.meetingRisks || []).map((risk, index) => {
-                const playbook = getRiskPlaybook({ risk, meeting });
-
                 return (
-                <div key={risk.id || `${risk.type}-${index}`} className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4">
-                  <div className="flex items-center justify-between gap-2 mb-2">
-                    <div className="text-sm font-extrabold text-amber-700 dark:text-amber-400">
-                      {risk.type}
+                  <button
+                    key={risk.id || `${risk.type}-${index}`}
+                    type="button"
+                    onClick={() => openRiskDetail(risk)}
+                    className="w-full rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 text-left transition hover:bg-amber-500/15"
+                  >
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <div className="text-sm font-extrabold text-amber-700 dark:text-amber-400">
+                        {risk.type}
+                      </div>
+                      <div className="rounded-lg border border-amber-500/25 bg-background px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-amber-700 dark:text-amber-400">
+                        {risk.severity || 'Medium'}
+                      </div>
                     </div>
-                    <div className="rounded-lg border border-amber-500/25 bg-background px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-amber-700 dark:text-amber-400">
-                      {risk.severity || 'Medium'}
-                    </div>
-                  </div>
-                  <p className="text-sm leading-relaxed text-muted-foreground font-medium">
-                    {risk.message}
-                  </p>
-
-                  <div className="mt-4 rounded-2xl border border-amber-500/15 bg-background/70 p-4">
-                    <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-amber-700 dark:text-amber-400">
-                      {playbook.heading}
-                    </div>
-                    <div className="mt-3 space-y-3">
-                      {playbook.steps.map((step, stepIndex) => (
-                        <div key={`${risk.id || risk.type}-step-${stepIndex}`} className="flex items-start gap-3">
-                          <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500/10 text-[11px] font-extrabold text-amber-700 dark:text-amber-400">
-                            {stepIndex + 1}
-                          </div>
-                          <p className="text-sm leading-6 text-foreground">{step}</p>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {playbook.actions.map((action) =>
-                        action.to ? (
-                          <Link
-                            key={`${risk.id || risk.type}-${action.label}`}
-                            to={action.to}
-                            className="button-secondary text-xs"
-                          >
-                            {action.label}
-                          </Link>
-                        ) : (
-                          <button
-                            key={`${risk.id || risk.type}-${action.label}`}
-                            type="button"
-                            onClick={() => handleRiskTarget(action.target)}
-                            className="button-secondary text-xs"
-                          >
-                            {action.label}
-                          </button>
-                        )
-                      )}
-                    </div>
-                  </div>
-                </div>
+                    <p className="text-sm leading-relaxed text-muted-foreground font-medium">
+                      {risk.message}
+                    </p>
+                  </button>
                 );
               })}
 
@@ -1089,6 +1066,92 @@ export default function MeetingDetail() {
       </motion.section>
 
       <AnimatePresence>
+        {selectedRiskDetail && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm p-4"
+            onClick={closeRiskDetail}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 12, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.98 }}
+              className="w-full max-w-2xl rounded-3xl border border-amber-500/20 bg-card p-6 shadow-2xl"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-3 mb-4">
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-muted-foreground mb-1">
+                    Risk resolution
+                  </div>
+                  <h3 className="text-xl font-extrabold tracking-tight text-amber-700 dark:text-amber-400 leading-tight">
+                    {selectedRiskDetail.risk.type}
+                  </h3>
+                  <p className="mt-2 text-sm leading-7 text-muted-foreground">
+                    {selectedRiskDetail.risk.message}
+                  </p>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="rounded-lg border border-amber-500/25 bg-background px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-amber-700 dark:text-amber-400">
+                    {selectedRiskDetail.risk.severity || 'Medium'}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={closeRiskDetail}
+                    className="rounded-lg border border-border bg-background p-2 text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-amber-500/15 bg-amber-500/5 p-4">
+                <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-amber-700 dark:text-amber-400">
+                  {selectedRiskDetail.playbook.heading}
+                </div>
+                <div className="mt-4 space-y-3">
+                  {selectedRiskDetail.playbook.steps.map((step, stepIndex) => (
+                    <div key={`${selectedRiskDetail.risk.id || selectedRiskDetail.risk.type}-step-${stepIndex}`} className="flex items-start gap-3">
+                      <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500/10 text-[11px] font-extrabold text-amber-700 dark:text-amber-400">
+                        {stepIndex + 1}
+                      </div>
+                      <p className="text-sm leading-6 text-foreground">{step}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-5 flex flex-wrap gap-2">
+                {selectedRiskDetail.playbook.actions.map((action) =>
+                  action.to ? (
+                    <Link
+                      key={`${selectedRiskDetail.risk.id || selectedRiskDetail.risk.type}-${action.label}`}
+                      to={action.to}
+                      onClick={closeRiskDetail}
+                      className="button-secondary text-xs"
+                    >
+                      {action.label}
+                    </Link>
+                  ) : (
+                    <button
+                      key={`${selectedRiskDetail.risk.id || selectedRiskDetail.risk.type}-${action.label}`}
+                      type="button"
+                      onClick={() => {
+                        closeRiskDetail();
+                        handleRiskTarget(action.target);
+                      }}
+                      className="button-secondary text-xs"
+                    >
+                      {action.label}
+                    </button>
+                  )
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
         {participantModal.open && (
           <motion.div
             initial={{ opacity: 0 }}
