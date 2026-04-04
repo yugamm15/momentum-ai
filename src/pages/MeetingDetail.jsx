@@ -23,6 +23,8 @@ import {
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useWorkspace } from '../components/workspace/useWorkspace';
+import WaveformScrub from '../components/meetings/WaveformScrub';
+import AiInput003 from '../components/ai/AiInput003';
 import {
   askMeetingQuestion,
   createWorkspaceTask,
@@ -202,13 +204,13 @@ export default function MeetingDetail() {
     }
   }
 
-  async function handleAsk(event) {
-    event.preventDefault();
+  async function handleAskMessage(text, mention) {
     setSurfaceError('');
     setAnswer('');
     setAsking(true);
     try {
-      const response = await askMeetingQuestion(meeting, question);
+      const enrichedQuestion = mention ? `${text}\n\nContext hint: prioritize ${mention}.` : text;
+      const response = await askMeetingQuestion(meeting, enrichedQuestion);
       setAnswer(response);
     } catch (error) {
       setSurfaceError(error.message || 'Moméntum could not answer this question.');
@@ -631,10 +633,11 @@ export default function MeetingDetail() {
               )}
 
               {meeting.audioUrl ? (
-                <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-                  <audio controls preload="metadata" className="w-full h-10 shadow-sm rounded-lg opacity-80 hover:opacity-100 transition-opacity">
-                    <source src={meeting.audioUrl} />
-                  </audio>
+                <div className="space-y-3">
+                  <WaveformScrub
+                    audioUrl={meeting.audioUrl}
+                    fileName={`${meeting.aiTitle || meeting.rawTitle || 'Meeting audio'}.mp3`}
+                  />
                   <div className="mt-4 text-xs font-medium text-muted-foreground italic">
                     Listen to the immutable recording alongside extracted insights.
                   </div>
@@ -928,18 +931,7 @@ export default function MeetingDetail() {
               <Bot className="h-4 w-4 text-blue-500" />
               Ask Moméntum AI
             </div>
-            <form onSubmit={handleAsk} className="mt-2 space-y-3">
-              <textarea
-                value={question}
-                onChange={(event) => setQuestion(event.target.value)}
-                rows={3}
-                placeholder="Ask about the meeting..."
-                className="w-full bg-card border border-border rounded-xl p-4 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 shadow-sm font-medium resize-none"
-              />
-              <button type="submit" disabled={asking || !question.trim()} className="button-primary w-full text-sm">
-                {asking ? 'Processing Query...' : 'Ask Moméntum'}
-              </button>
-            </form>
+            <AiInput003 onSendMessage={handleAskMessage} loading={asking} placeholder="Ask about the meeting..." />
             <AnimatePresence>
               {answer && (
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-4 p-4 rounded-xl bg-primary/5 border border-primary/20 text-sm font-medium leading-relaxed text-foreground shadow-inner">

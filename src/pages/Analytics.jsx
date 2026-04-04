@@ -7,7 +7,7 @@ import { updateWorkspaceParticipant } from '../lib/workspace-data';
 function barColor(score) {
   if (score >= 80) return 'bg-emerald-500';
   if (score >= 60) return 'bg-amber-500';
-  return 'bg-rose-500';
+  return 'bg-slate-500';
 }
 
 const fadeUp = {
@@ -222,26 +222,54 @@ export default function Analytics() {
 
       <motion.section variants={fadeUp} className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
         {[
-          { label: 'Execution Debt', value: analytics.meetingDebt, meta: 'Open ambiguity signals', icon: Gauge },
-          { label: 'Unassigned Tasks', value: analytics.unassignedTasks, meta: 'Ownership gaps', icon: Users },
-          { label: 'People Tracked', value: analytics.peopleTracked || people.length, meta: 'Workspace + meeting participants', icon: BarChart3 },
-          { label: 'Transcript Ready', value: transcriptReadyMeetings, meta: 'Meetings with full text', icon: FileText },
+          {
+            label: 'Execution Debt',
+            value: analytics.meetingDebt,
+            meta: 'Open ambiguity signals',
+            icon: Gauge,
+            tone: 'text-violet-600',
+            chip: 'bg-violet-500/10 border-violet-500/20',
+          },
+          {
+            label: 'Unassigned Tasks',
+            value: analytics.unassignedTasks,
+            meta: 'Ownership gaps',
+            icon: Users,
+            tone: 'text-amber-600',
+            chip: 'bg-amber-500/10 border-amber-500/20',
+          },
+          {
+            label: 'People Tracked',
+            value: analytics.peopleTracked || people.length,
+            meta: 'Workspace + meeting participants',
+            icon: BarChart3,
+            tone: 'text-violet-600',
+            chip: 'bg-violet-500/10 border-violet-500/20',
+          },
+          {
+            label: 'Transcript Ready',
+            value: transcriptReadyMeetings,
+            meta: 'Meetings with full text',
+            icon: FileText,
+            tone: 'text-emerald-600',
+            chip: 'bg-emerald-500/10 border-emerald-500/20',
+          },
         ].map((card) => {
           const Icon = card.icon;
           return (
             <div key={card.label} className="glass-panel p-6 group hover:border-primary/20 transition-all shadow-sm">
               <div className="flex items-center justify-between mb-4">
-                <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground group-hover:text-primary transition-colors">
+                <div className={`text-[10px] font-bold uppercase tracking-widest text-foreground/65 ${card.tone} transition-colors`}>
                   {card.label}
                 </div>
-                <div className="p-2 bg-secondary rounded-lg">
+                <div className={`p-2 border rounded-lg ${card.chip}`}>
                   <Icon className="h-4 w-4 text-foreground" />
                 </div>
               </div>
               <div className="text-4xl font-extrabold text-foreground mb-2">
                 {card.value}
               </div>
-              <div className="text-xs font-semibold text-muted-foreground/80">{card.meta}</div>
+              <div className="text-xs font-semibold text-foreground/70">{card.meta}</div>
             </div>
           );
         })}
@@ -249,7 +277,7 @@ export default function Analytics() {
 
       <motion.section variants={fadeUp} className="grid gap-8 xl:grid-cols-[1.5fr_1fr]">
         <div className="glass-panel p-8">
-          <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-foreground/65 mb-2">
             System Integrity
           </div>
           <h2 className="text-3xl font-extrabold tracking-tight text-foreground mb-8">
@@ -257,27 +285,27 @@ export default function Analytics() {
           </h2>
           
           <div className="rounded-2xl border border-border bg-card/50 p-6">
-            <div className="relative flex min-h-[300px] items-end justify-between gap-4 w-full">
+            <div className="relative flex w-full min-h-[300px] items-end gap-4 overflow-x-auto">
               {analytics.scoreTrend.map((point) => (
-                <div key={point.id} className="flex flex-1 flex-col items-center gap-3 group relative">
-                  <div className="absolute -top-10 opacity-0 group-hover:opacity-100 transition-opacity bg-background border border-border px-3 py-1.5 rounded-lg text-xs font-bold text-foreground shadow-lg z-10">
+                <div key={point.id} className="flex min-w-[88px] flex-1 flex-col items-center gap-3 group relative">
+                  <div className="absolute -top-10 opacity-0 group-hover:opacity-100 transition-opacity bg-background border border-border px-3 py-1.5 rounded-lg text-xs font-bold text-foreground shadow-lg z-10 whitespace-nowrap">
                     {point.score}% Integrity
                   </div>
-                  <div
-                    className="flex w-full items-end justify-center rounded-t-xl bg-secondary/50 border border-transparent group-hover:border-border transition-colors px-1 h-full"
-                    style={{ height: `${Math.max(point.score, 10)}%`, minHeight: '40px' }}
-                  >
-                    <div className={`w-full rounded-t-lg ${barColor(point.score)} opacity-80 group-hover:opacity-100 transition-opacity`} style={{ height: `${Math.max(point.score, 10)}%` }} />
+                  <div className="relative h-52 w-full rounded-xl bg-secondary/70 border border-border overflow-hidden">
+                    <div
+                      className={`absolute inset-x-0 bottom-0 rounded-t-lg ${barColor(point.score)} opacity-90 group-hover:opacity-100 transition-opacity`}
+                      style={{ height: `${Math.max(Math.min(point.score, 100), 8)}%` }}
+                    />
                   </div>
                   <div className="text-center w-full">
                     <div className="text-sm font-extrabold text-foreground">{point.score}</div>
-                    <div className="mt-1 text-[10px] font-bold text-muted-foreground uppercase tracking-wider truncate">{point.label}</div>
+                    <div className="mt-1 text-[10px] font-bold text-foreground/70 uppercase tracking-wider truncate" title={point.label}>{point.label}</div>
                   </div>
                 </div>
               ))}
               {analytics.scoreTrend.length === 0 && (
                 <div className="flex h-full w-full items-center justify-center">
-                  <div className="text-sm font-medium text-muted-foreground text-center bg-background px-6 py-4 rounded-xl border border-border shadow-sm">
+                  <div className="text-sm font-medium text-foreground/70 text-center bg-background px-6 py-4 rounded-xl border border-border shadow-sm">
                     Process a few meetings to extract a global integrity trend.
                   </div>
                 </div>
@@ -288,7 +316,7 @@ export default function Analytics() {
 
         <div className="space-y-8">
           <div className="glass-panel p-8">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-violet-600 mb-2">
               Owner Load
             </div>
             <h2 className="text-2xl font-extrabold tracking-tight text-foreground mb-6">
@@ -296,7 +324,7 @@ export default function Analytics() {
             </h2>
             <div className="space-y-3">
               {analytics.ownerLoad.map((owner) => (
-                <div key={owner.name} className="rounded-2xl bg-secondary/50 border border-border px-5 py-4 flex items-center justify-between hover:bg-card transition-colors">
+                <div key={owner.name} className="rounded-2xl bg-violet-500/5 border border-violet-500/20 px-5 py-4 flex items-center justify-between hover:bg-card transition-colors">
                   <div className="text-sm font-bold text-foreground">{owner.name}</div>
                   <div className="rounded-lg bg-background border border-border px-3 py-1.5 text-xs font-extrabold text-foreground shadow-sm">
                     {owner.count} Tasks
@@ -304,7 +332,7 @@ export default function Analytics() {
                 </div>
               ))}
               {analytics.ownerLoad.length === 0 && (
-                <div className="rounded-2xl border border-dashed border-border bg-secondary/50 p-6 text-sm text-muted-foreground text-center font-medium">
+                <div className="rounded-2xl border border-dashed border-border bg-secondary/70 p-6 text-sm text-foreground/70 text-center font-medium">
                   No tasks assigned yet.
                 </div>
               )}
@@ -312,7 +340,7 @@ export default function Analytics() {
           </div>
 
           <div className="glass-panel p-8">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-amber-600 mb-2">
               Frequency Diagnostics
             </div>
             <h2 className="text-2xl font-extrabold tracking-tight text-foreground mb-6">
@@ -328,7 +356,7 @@ export default function Analytics() {
                 </div>
               ))}
               {analytics.topRisks.length === 0 && (
-                <div className="rounded-2xl border border-dashed border-border bg-secondary/50 p-6 text-sm text-muted-foreground text-center font-medium">
+                <div className="rounded-2xl border border-dashed border-border bg-secondary/70 p-6 text-sm text-foreground/70 text-center font-medium">
                   Zero systemic anomalies detected.
                 </div>
               )}
@@ -339,8 +367,8 @@ export default function Analytics() {
 
       <motion.section variants={fadeUp} className="grid gap-6 xl:grid-cols-2">
         <div className="glass-panel p-8">
-          <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-4">
-            <Users className="h-4 w-4 text-blue-500" />
+          <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-violet-600 mb-4">
+            <Users className="h-4 w-4 text-violet-500" />
             People Coverage
           </div>
           <h2 className="text-3xl font-extrabold tracking-tight text-foreground mb-6">
@@ -352,12 +380,12 @@ export default function Analytics() {
                 key={person.id}
                 type="button"
                 onClick={() => openPersonModal(person)}
-                className="w-full text-left rounded-2xl bg-secondary/50 hover:bg-card border border-border p-4 transition-colors"
+                className="w-full text-left rounded-2xl bg-violet-500/5 hover:bg-card border border-violet-500/20 p-4 transition-colors"
               >
                 <div className="flex flex-col gap-2">
                   <div className="min-w-0">
                     <div className="text-sm font-bold text-foreground truncate">{person.displayName}</div>
-                    <div className="mt-1 text-[10px] uppercase font-bold tracking-widest text-muted-foreground truncate">
+                    <div className="mt-1 text-[10px] uppercase font-bold tracking-widest text-foreground/65 truncate">
                       {person.isWorkspaceMember ? person.email || 'Native Member' : 'External Request'}
                     </div>
                   </div>
@@ -376,26 +404,26 @@ export default function Analytics() {
         </div>
 
         <div className="glass-panel p-8">
-          <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-4">
-            <AlertTriangle className="h-4 w-4 text-amber-500" />
+          <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-emerald-600 mb-4">
+            <AlertTriangle className="h-4 w-4 text-emerald-500" />
             System Verification
           </div>
           <h2 className="text-3xl font-extrabold tracking-tight text-foreground mb-6">
             Trust Posture
           </h2>
           <div className="space-y-4 text-sm leading-relaxed text-foreground font-medium">
-            <div className="rounded-2xl bg-secondary/50 border border-border p-5 shadow-sm flex items-center justify-between">
+            <div className="rounded-2xl bg-emerald-500/5 border border-emerald-500/20 p-5 shadow-sm flex items-center justify-between">
               <div>
                 <span className="font-extrabold text-foreground">{analytics.matchedTaskOwners || 0}</span> / {snapshot.tasks.length} tasks currently map to a workspace person.
               </div>
             </div>
-            <div className="rounded-2xl bg-secondary/50 border border-border p-5 shadow-sm flex items-center justify-between">
+            <div className="rounded-2xl bg-emerald-500/5 border border-emerald-500/20 p-5 shadow-sm flex items-center justify-between">
               <div>
                 <span className="font-extrabold text-foreground">{transcriptReadyMeetings}</span> / {meetings.length} meetings include transcript text for direct review.
               </div>
             </div>
-            <div className="rounded-2xl border border-blue-500/20 bg-blue-500/10 p-5 text-blue-700 dark:text-blue-400 shadow-sm">
-              <span className="font-extrabold">Attribution Principle:</span> The dashboard shows captured transcript text directly and only surfaces attribution when the source data is explicit and stable.
+            <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-5 text-emerald-700 dark:text-emerald-400 shadow-sm">
+              <span className="font-extrabold">Acoustic Principle:</span> Speaker attribution is never hallucinated. If the system does not concretely isolate a vocal profile, the ledger explicitly omits attribution to prevent false execution routing.
             </div>
           </div>
         </div>

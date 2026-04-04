@@ -1,8 +1,9 @@
-import { useDeferredValue, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { ArrowRight, AudioLines, Search, Users, Activity, Filter, Lock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useWorkspace } from '../components/workspace/useWorkspace';
+import PaginationControl from '../components/ui/PaginationControl';
 
 const filterOptions = ['All Meetings', 'Process Next', 'Risks Found', 'Has Audio'];
 const scorePill = {
@@ -25,10 +26,13 @@ const fadeUp = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] } }
 };
 
+const ITEMS_PER_PAGE = 4;
+
 export default function Meetings() {
   const { snapshot } = useWorkspace();
   const [query, setQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('All Variants');
+  const [currentPage, setCurrentPage] = useState(1);
   const deferredQuery = useDeferredValue(query);
 
   const summary = useMemo(() => {
@@ -68,6 +72,23 @@ export default function Meetings() {
       return true;
     });
   }, [activeFilter, deferredQuery, snapshot.meetings]);
+
+  const totalPages = Math.max(1, Math.ceil(meetings.length / ITEMS_PER_PAGE));
+
+  const paginatedMeetings = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return meetings.slice(start, start + ITEMS_PER_PAGE);
+  }, [currentPage, meetings]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeFilter, deferredQuery]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   return (
     <motion.div 
@@ -148,13 +169,13 @@ export default function Meetings() {
             ))}
           </div>
           <div className="shrink-0 text-xs text-muted-foreground uppercase tracking-widest font-bold pr-2">
-            Showing <span className="text-foreground">{meetings.length}</span> Meetings
+            Showing <span className="text-foreground">{paginatedMeetings.length}</span> of <span className="text-foreground">{meetings.length}</span> Meetings
           </div>
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
           <AnimatePresence>
-            {meetings.map((meeting) => (
+            {paginatedMeetings.map((meeting) => (
               <motion.div
                 key={meeting.id}
                 layout
@@ -226,6 +247,10 @@ export default function Meetings() {
             ))}
           </AnimatePresence>
         </div>
+
+        {meetings.length > 0 && totalPages > 1 && (
+          <PaginationControl totalPages={totalPages} value={currentPage} onChange={setCurrentPage} />
+        )}
 
         {meetings.length === 0 && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass-panel text-center py-24 border-dashed">

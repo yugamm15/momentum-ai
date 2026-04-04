@@ -13,8 +13,8 @@ import {
   Waves,
   Workflow
 } from 'lucide-react';
-import { motion, useScroll, useTransform } from 'framer-motion';
-import { useRef } from 'react';
+import { AnimatePresence, motion, useScroll, useTransform } from 'framer-motion';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import MomentumLogo from '../components/MomentumLogo';
 
@@ -78,6 +78,7 @@ const processSteps = [
 ];
 
 export default function Landing({ session }) {
+  const [showIntro, setShowIntro] = useState(true);
   const containerRef = useRef(null);
   const { scrollYProgress } = useScroll({
     target: containerRef,
@@ -86,6 +87,14 @@ export default function Landing({ session }) {
 
   const heroY = useTransform(scrollYProgress, [0, 1], ["0%", "50%"]);
   const heroOpacity = useTransform(scrollYProgress, [0, 0.5], [1, 0]);
+
+  useEffect(() => {
+    const hideTimer = window.setTimeout(() => {
+      setShowIntro(false);
+    }, 2400);
+
+    return () => window.clearTimeout(hideTimer);
+  }, []);
 
   return (
     <div className="relative min-h-screen bg-background text-foreground transition-colors duration-500" ref={containerRef}>
@@ -104,6 +113,48 @@ export default function Landing({ session }) {
           className="absolute top-[30%] -right-[10%] w-[40%] h-[40%] bg-primary/10 blur-[120px] rounded-full"
         />
       </div>
+
+      <AnimatePresence>
+        {showIntro && (
+          <motion.div
+            initial={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.45, ease: 'easeOut' }}
+            className="fixed inset-0 z-[70] flex items-center justify-center bg-background/88 backdrop-blur-md"
+          >
+            <div className="relative w-[min(88vw,760px)] h-[180px]">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.85 }}
+                animate={{ opacity: [0, 0.35, 0], scale: [0.85, 1.05, 1.2] }}
+                transition={{ duration: 1.5, ease: 'easeOut' }}
+                className="absolute left-1/2 top-1/2 h-36 w-36 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/25 blur-3xl"
+              />
+
+              <motion.div
+                initial={{ scaleX: 0, opacity: 0 }}
+                animate={{ scaleX: 1, opacity: [0, 1, 1] }}
+                transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1], delay: 0.35 }}
+                className="absolute left-0 right-0 top-1/2 h-[2px] origin-center bg-gradient-to-r from-transparent via-primary to-transparent"
+              />
+
+              <motion.div
+                initial={{ scaleY: 0, opacity: 0 }}
+                animate={{ scaleY: 1, opacity: [0, 0.8, 0] }}
+                transition={{ duration: 0.95, ease: [0.22, 1, 0.36, 1], delay: 0.75 }}
+                className="absolute left-1/2 top-[18%] bottom-[18%] w-[2px] -translate-x-1/2 origin-top bg-gradient-to-b from-transparent via-primary/80 to-transparent"
+              />
+
+              <motion.div
+                initial={{ left: '6%', opacity: 0 }}
+                animate={{ left: '94%', opacity: [0, 1, 1, 0] }}
+                transition={{ duration: 1.25, ease: 'easeInOut', delay: 0.5 }}
+                className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 h-3 w-3 rounded-full bg-primary shadow-[0_0_20px_rgba(0,102,255,0.8)]"
+              />
+
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Navigation */}
       <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border bg-card/40 backdrop-blur-2xl">
