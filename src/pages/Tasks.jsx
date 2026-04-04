@@ -1,5 +1,5 @@
 import { useDeferredValue, useMemo, useState } from 'react';
-import { Clock3, LayoutList, Plus, Search, User, Users } from 'lucide-react';
+import { Clock3, FileText, GripVertical, LayoutList, Plus, Search, User, Users, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useWorkspace } from '../components/workspace/useWorkspace';
@@ -26,6 +26,9 @@ export default function Tasks() {
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
   const [savingId, setSavingId] = useState('');
+  const [selectedTaskId, setSelectedTaskId] = useState('');
+  const [draggingTaskId, setDraggingTaskId] = useState('');
+  const [dragTargetStatus, setDragTargetStatus] = useState('');
   const [error, setError] = useState('');
   const [newTask, setNewTask] = useState({
     meetingId: '',
@@ -73,6 +76,11 @@ export default function Tasks() {
     new Set((snapshot.people || []).map((person) => person.displayName).filter(Boolean))
   );
 
+  const selectedTask = useMemo(
+    () => snapshot.tasks.find((task) => task.id === selectedTaskId) || null,
+    [selectedTaskId, snapshot.tasks]
+  );
+
   async function cycleStatus(task) {
     const currentIndex = columns.findIndex((column) => column.id === task.status);
     const nextStatus = columns[(currentIndex + 1 + columns.length) % columns.length].id;
@@ -84,6 +92,58 @@ export default function Tasks() {
       await refresh({ silent: true });
     } catch (statusError) {
       setError(statusError.message || 'Moméntum could not update this task.');
+    } finally {
+      setSavingId('');
+    }
+  }
+
+  function handleTaskDragStart(event, task) {
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', String(task.id || ''));
+    setDraggingTaskId(String(task.id || ''));
+    setDragTargetStatus('');
+  }
+
+  function handleTaskDragEnd() {
+    setDraggingTaskId('');
+    setDragTargetStatus('');
+  }
+
+  function handleColumnDragOver(event, status) {
+    if (!draggingTaskId) {
+      return;
+    }
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    if (dragTargetStatus !== status) {
+      setDragTargetStatus(status);
+    }
+  }
+
+  async function handleColumnDrop(event, status) {
+    event.preventDefault();
+    const droppedTaskId = String(event.dataTransfer.getData('text/plain') || draggingTaskId || '').trim();
+
+    setDragTargetStatus('');
+    setDraggingTaskId('');
+
+    if (!droppedTaskId) {
+      return;
+    }
+
+    const droppedTask = snapshot.tasks.find((task) => task.id === droppedTaskId);
+    if (!droppedTask || droppedTask.status === status) {
+      return;
+    }
+
+    setSavingId(droppedTaskId);
+    setError('');
+    try {
+      await updateWorkspaceTask(droppedTaskId, { status });
+      await refresh({ silent: true });
+    } catch (dropError) {
+      setError(dropError.message || 'Momentum could not move this task.');
     } finally {
       setSavingId('');
     }
@@ -282,7 +342,19 @@ export default function Tasks() {
         {columns.map((column) => {
           const tasks = filteredTasks.filter((task) => task.status === column.id);
           return (
-            <div key={column.id} className="flex flex-col gap-4">
+            <div
+              key={column.id}
+              onDragOver={(event) => handleColumnDragOver(event, column.id)}
+              onDrop={(event) => handleColumnDrop(event, column.id)}
+              onDragLeave={() => {
+                if (dragTargetStatus === column.id) {
+                  setDragTargetStatus('');
+                }
+              }}
+              className={`flex flex-col gap-4 rounded-2xl transition-all ${
+                dragTargetStatus === column.id ? 'ring-1 ring-primary/35 bg-primary/5 p-2 -m-2' : ''
+              }`}
+            >
               <div className="flex items-center justify-between pb-3 border-b border-border">
                 <h2 className="text-xl font-bold tracking-tight text-foreground">{column.label}</h2>
                 <div className="text-[10px] font-bold bg-secondary text-muted-foreground px-2 py-1 rounded-md">
@@ -293,64 +365,36 @@ export default function Tasks() {
               <div className="flex flex-col gap-4 h-full">
                 <AnimatePresence>
                   {tasks.map((task) => (
-                    <motion.div 
+                    <motion.button
+                      type="button"
                       key={task.id} 
                       layout 
                       initial={{ opacity: 0, scale: 0.95 }}
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 0.9 }}
-                      className="glass-panel p-5 group hover:border-primary/20 transition-all shadow-sm"
+                      draggable
+                      onDragStart={(event) => handleTaskDragStart(event, task)}
+                      onDragEnd={handleTaskDragEnd}
+                      onClick={() => setSelectedTaskId(task.id)}
+                      className={`glass-panel w-full p-5 text-left group hover:border-primary/20 transition-all shadow-sm cursor-grab active:cursor-grabbing ${
+                        draggingTaskId === task.id ? 'opacity-55' : ''
+                      }`}
                     >
-                      <Link
-                        to={`/dashboard/meetings/${task.meetingId}`}
-                        className="text-[10px] font-bold uppercase tracking-widest text-primary/80 hover:text-primary transition-colors block mb-2 truncate"
-                      >
-                        {task.sourceMeeting}
-                      </Link>
-                      
-                      <div className="text-sm font-bold text-foreground leading-snug mb-3 pr-2">
-                        {task.title}
-                      </div>
-                      
-                      <div className="flex flex-wrap gap-2 mb-4">
-                        <span className="inline-flex items-center gap-1.5 rounded-lg bg-secondary px-2.5 py-1 text-[10px] font-bold text-foreground shadow-sm truncate max-w-[160px]">
-                          <User className="h-3.5 w-3.5 text-muted-foreground" />
-                          {task.owner || 'Unassigned'}
-                        </span>
-                        <span className="inline-flex items-center gap-1.5 rounded-lg bg-secondary px-2.5 py-1 text-[10px] font-bold text-foreground shadow-sm">
-                          <Clock3 className="h-3.5 w-3.5 text-muted-foreground" />
-                          {task.dueDate || 'No constraint'}
-                        </span>
-                        {task.ownerProfileId && (
-                          <span className="rounded-lg bg-primary/10 border border-primary/20 px-2.5 py-1 text-[10px] font-bold text-primary shadow-sm">
-                            Matched
-                          </span>
-                        )}
-                        {task.needsReview && (
-                          <span className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 text-[10px] font-bold text-amber-600 dark:text-amber-400 shadow-sm">
-                            Validate
-                          </span>
-                        )}
-                      </div>
-                      
-                      <div className="rounded-xl border border-border bg-card/60 p-3 text-[11px] leading-relaxed text-muted-foreground font-medium italic mb-4 line-clamp-3 group-hover:bg-card transition-colors">
-                        "{task.sourceSnippet}"
-                      </div>
-                      
-                      <div className="flex items-center justify-between gap-2 mt-auto">
-                        <div className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground">
-                          {task.needsReview ? 'Check task' : `Confidence ${(task.confidence * 100).toFixed(0)}%`}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="text-sm font-bold text-foreground leading-snug pr-2 line-clamp-3">
+                          {task.title}
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => cycleStatus(task)}
-                          disabled={savingId === task.id}
-                          className="rounded-lg bg-primary/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-primary hover:bg-primary/20 transition-colors disabled:opacity-50"
-                        >
-                          {savingId === task.id ? 'Moving...' : 'Move Status'}
-                        </button>
+                        <GripVertical className="h-4 w-4 text-muted-foreground/80 shrink-0" />
                       </div>
-                    </motion.div>
+
+                      <div className="mt-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground truncate">
+                        {task.sourceMeeting}
+                      </div>
+
+                      <div className="mt-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/80">
+                        {savingId === task.id ? 'Updating status...' : 'Drag to move • Click for details'}
+                      </div>
+                    </motion.button>
                   ))}
                 </AnimatePresence>
                 
@@ -364,6 +408,90 @@ export default function Tasks() {
           );
         })}
       </motion.section>
+
+      <AnimatePresence>
+        {selectedTask && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-background/65 backdrop-blur-sm p-4"
+            onClick={() => setSelectedTaskId('')}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 12, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.98 }}
+              className="w-full max-w-2xl rounded-3xl border border-border bg-card p-6 shadow-2xl"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-4 mb-4">
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-muted-foreground mb-2">
+                    Task Details
+                  </div>
+                  <h3 className="text-2xl font-extrabold tracking-tight text-foreground leading-tight">
+                    {selectedTask.title}
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedTaskId('')}
+                  className="rounded-xl border border-border bg-background p-2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2 mb-5">
+                <div className="rounded-xl border border-border bg-secondary/50 px-3 py-2 text-sm font-semibold text-foreground">
+                  <span className="text-[10px] uppercase tracking-widest text-muted-foreground block mb-1">Owner</span>
+                  <span className="inline-flex items-center gap-1.5"><User className="h-3.5 w-3.5 text-muted-foreground" />{selectedTask.owner || 'Unassigned'}</span>
+                </div>
+                <div className="rounded-xl border border-border bg-secondary/50 px-3 py-2 text-sm font-semibold text-foreground">
+                  <span className="text-[10px] uppercase tracking-widest text-muted-foreground block mb-1">Due Date</span>
+                  <span className="inline-flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5 text-muted-foreground" />{selectedTask.dueDate || 'No constraint'}</span>
+                </div>
+                <div className="rounded-xl border border-border bg-secondary/50 px-3 py-2 text-sm font-semibold text-foreground">
+                  <span className="text-[10px] uppercase tracking-widest text-muted-foreground block mb-1">Status</span>
+                  {selectedTask.status}
+                </div>
+                <div className="rounded-xl border border-border bg-secondary/50 px-3 py-2 text-sm font-semibold text-foreground">
+                  <span className="text-[10px] uppercase tracking-widest text-muted-foreground block mb-1">Source Meeting</span>
+                  {selectedTask.sourceMeeting}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-border bg-background p-4 mb-5">
+                <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground mb-2 inline-flex items-center gap-2">
+                  <FileText className="h-3.5 w-3.5" />
+                  Evidence Snippet
+                </div>
+                <p className="text-sm leading-relaxed text-foreground">
+                  {selectedTask.sourceSnippet || 'No transcript evidence snippet is stored for this task yet.'}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Link to={`/dashboard/meetings/${selectedTask.meetingId}`} className="button-secondary">
+                  Open Meeting
+                </Link>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await cycleStatus(selectedTask);
+                    setSelectedTaskId(selectedTask.id);
+                  }}
+                  disabled={savingId === selectedTask.id}
+                  className="button-primary disabled:opacity-60"
+                >
+                  {savingId === selectedTask.id ? 'Updating...' : 'Move To Next Status'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
